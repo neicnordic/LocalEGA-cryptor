@@ -1,0 +1,2 @@
+# LocalEGA-cryptor
+PGP Encryption
