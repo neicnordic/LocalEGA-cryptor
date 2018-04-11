@@ -19,7 +19,7 @@ PGP Public keys are contained in the adjacent pubring.pgp file.
       zip_safe=False,
       entry_points={
           'console_scripts': [
-              'lega-encrypt = legacryptor.__main__:main',
+              'lega-cryptor = legacryptor.__main__:main',
           ]
       },
       platforms = 'any',

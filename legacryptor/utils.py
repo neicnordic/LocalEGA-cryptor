@@ -1,6 +1,7 @@
 import os
 import zlib 
 import hashlib
+import logging 
 
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes
@@ -9,6 +10,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, dsa, padding
 
 from .constants import lookup_sym_algorithm
+
+LOG = logging.getLogger(__name__)
 
 class PGPError(Exception):
     def __init__(self, msg):
@@ -64,6 +67,21 @@ def get_mpi(data):
     #print("MPI bits:",mpi_len,"to_process", to_process)
     return int.from_bytes(b, 'big')
 
+def to_mpi(n):
+    '''Make a multi-precision integer.'''
+    blen = n.bit_length()
+    return blen.to_bytes(2,'big') + n.to_bytes((blen + 7) // 8, 'big')
+
+def old_tag_length(data, length_type):
+    if length_type == 0:
+        data_length = read_1_byte(data)
+    elif length_type == 1:
+        data_length = read_2_bytes(data)
+    elif length_type == 2:
+        data_length = read_4_bytes(data)
+    elif length_type == 3:
+        data_length = None
+    return data_length, False # partial is False
 
 def new_tag_length(data):
     '''Takes a bytearray of data as input.
@@ -95,21 +113,88 @@ def new_tag_length(data):
 
     return (length, partial)
 
-def old_tag_length(data, length_type):
-    if length_type == 0:
-        data_length = read_1_byte(data)
-    elif length_type == 1:
-        data_length = read_2_bytes(data)
-    elif length_type == 2:
-        data_length = read_4_bytes(data)
-    elif length_type == 3:
-        data_length = None
-        # pos = data.tell()
-        # data_length = len(data.read()) # until the end
-        # data.seek(pos, io.SEEK_CUR) # roll back
-        #raise PGPError("Undertermined length - SHOULD NOT be used")
+def parse_header(data):
+    """\
+    A packet is composed of (in order) a `tag`, a `length` and a `body`.
 
-    return data_length, False # partial is False
+    A tag is one byte long and determine how many bytes the length is.
+
+    There are two formats for tag:
+    * old style: The length can be 0, 1, 2 or 4 byte(s) long.
+    * new style: The length can be 1, 2, or 4 byte(s) long.
+ 
+    Packet Tag byte
+    ---------------
+    +-------------+----------+---------------+---+---+---+---+---------+---------+
+    | bit         | 7        | 6             | 5 | 4 | 3 | 2 | 1       | 0       |
+    +-------------+----------+---------------+---+---+---+---+---------+---------+
+    |             | always 1 | packet format |               | length type       |
+    |             |          |               |               | 0 = 1 byte        |
+    | old-style   |          |       0       |  packet tag   | 1 = 2 bytes       |
+    |             |          |               |               | 2 = 5 bytes       |
+    |             |          |               |               | 3 = undertermined |
+    +-------------+          +---------------+---------------+-------------------+
+    |             |          |               |                                   |
+    | new-style   |          |       1       |             packet tag            |
+    |             |          |               |                                   |
+    +-------------+----------+---------------+-----------------------------------+
+
+    With the old format, the tag includes the length, but the number of packet types is limited to 16.
+    With the new format, the number of packet type can exceed 16, and the length are the following bytes.
+
+    The length determines how many bytes the body is.
+    Note that the new format can specify a length that encodes a body chunk by chunk.
+   
+    Refer to RFC 4880 for more information (https://tools.ietf.org/html/rfc4880).
+    """
+    # First byte
+    b = data.read(1)
+    if not b:
+        return None
+
+    #LOG.debug(f"First byte: {b.hex()} {ord(b):08b} ({ord(b)})")
+    b = ord(b)
+
+    # 7th bit of the first byte must be a 1
+    if not bool(b & 0x80):
+        rest = data.read()
+        LOG.debug('b: %s, REST (%d bytes): %s ...', b, len(rest), rest[:30].hex())
+        raise PGPError("incorrect packet header")
+
+    # the header is in new format if bit 6 is set
+    new_format = bool(b & 0x40)
+
+    # tag encoded in bits 5-0 (new packet format)
+    tag = b & 0x3f
+
+    if new_format:
+        # length is encoded in the second (and following) octet
+        data_length, partial = new_tag_length(data)
+    else:
+        tag >>= 2 # tag encoded in bits 5-2, discard bits 1-0
+        length_type = b & 0x03 # get the last 2 bits
+        data_length, partial = old_tag_length(data, length_type)
+    return (tag, data_length, partial)
+
+def encode_length(length, partial): # new format only
+    '''Encode the length header'''
+    if partial:
+        # partial length, 224 <= l < 255
+        assert( is_power_two(length) )
+        assert( length.bit_length() < 16 and length & 0x1f == 0 )
+        return (length.bit_length() - 1).to_bytes(1,'big')
+
+    # one-octet
+    if length < 192:
+        return length.to_bytes(1,'big')
+
+    # two-octet
+    if length < 8384:
+        elen = ((length & 0xFF00) + (192 << 8)) + ((length & 0xFF) - 192)
+        return elen.to_bytes(2,'big')
+
+    # five-octet
+    return b'\xFF' + length.to_bytes(4,'big')
 
 def make_rsa_key(n,e):
     '''Convert a hex-based dict of values to an RSA key'''
@@ -126,15 +211,32 @@ def make_elg_key(p,q,y):
     # backend = default_backend()
     raise NotImplementedError()
 
-def encryptor(pubkey, algid):
+def pesk_encrypt(pubkey, m):
+    alg = pubkey.raw_pub_algorithm
+    args = (m,padding.PKCS1v15()) if alg in (1,2,3) else (m,)
+    enc_m = pubkey._key.encrypt(*args)
+    return to_mpi(int.from_bytes(enc_m, 'big'))
+
+def encryptor(pubkey):
     '''It is a black box sitting and waiting for input data to be
        encrypted, given the `alg` algorithm.'''
 
     # algid is currently ignored
     # We fix it to AES-256, ie algo 9
-    algid = 9
+    algid = pubkey.preferred_encryption_algorithm()
     algoname, iv_len, alg = lookup_sym_algorithm(algid)
     session_key = os.urandom(iv_len)
+
+    # The value "m" in the above formulas is derived from the session key
+    # as follows.  First, the session key is prefixed with a one-octet
+    # algorithm identifier that specifies the symmetric encryption
+    # algorithm used to encrypt the following Symmetrically Encrypted Data
+    # Packet.  Then a two-octet checksum is appended, which is equal to the
+    # sum of the preceding session key octets, not including the algorithm
+    # identifier, modulo 65536.  This value is then encoded as described in
+    # PKCS#1 block encoding EME-PKCS1-v1_5 in Section 7.2.1 of [RFC3447] to
+    # form the "m" value used in the formulas above.  See Section 13.1 of
+    # this document for notes on OpenPGP's use of PKCS#1.
 
     m = algid.to_bytes(1,'big') + session_key + (sum(session_key) % 65536).to_bytes(2,'big')
     block_size = alg.block_size // 8
@@ -147,7 +249,7 @@ def encryptor(pubkey, algid):
     prefix = os.urandom(block_size)
     mdc = hashlib.new('SHA1')
 
-    indata, final = yield m
+    indata, final = yield pesk_encrypt(pubkey, m)
     indata = prefix + prefix[-2:] + indata # prefix plus repeat
     while True:
         encrypted_data = engine.update(indata)
@@ -159,8 +261,26 @@ def encryptor(pubkey, algid):
             encrypted_data += final_data + mdc.digest()
         indata, final = yield encrypted_data
 
+class Passthrough():
+    def compress(data):
+        return data
+    def flush():
+        return b''
 
-def compressor(algo):
-    # Compress algo if currently ignored
-    # It is set to ZIP
-    return zlib.compressobj() # Zip deflate with zlib header
+def compressor(pubkey):
+    algo = pubkey.preferred_compression_algorithm()
+    if algo == 0: # Uncompressed
+        engine = Passthrough()
+        
+    elif algo == 1: # Zip deflate
+        engine = zlib.decompressobj(-15)
+        
+    elif algo == 2: # Zip deflate with zlib header
+        engine = zlib.decompressobj()
+        
+    elif algo == 3: # Bzip2
+        engine = bz2.decompressobj()
+    else:
+        raise NotImplementedError()
+
+    return engine
