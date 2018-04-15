@@ -4,6 +4,7 @@
 tmp/
 private/
 _build/
+logger*.yaml
 
 pubring.ebi
 pubring.pgp
