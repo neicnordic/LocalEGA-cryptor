@@ -15,7 +15,7 @@ PGP Public keys are contained in the adjacent pubring.pgp file.
 ''',
       packages=['legacryptor'],
       include_package_data=False,
-      package_data={ 'legacryptor': ['pubring.pgp', 'logger.yml'] },
+      package_data={ 'legacryptor': ['pubring.bin'] },
       zip_safe=False,
       entry_points={
           'console_scripts': [
@@ -26,6 +26,7 @@ PGP Public keys are contained in the adjacent pubring.pgp file.
       # install_requires=[
       #     'cryptography==2.1.4',
       #     'sphinx_rtd_theme',
+      #     'terminaltables',
       # ],
 )
           

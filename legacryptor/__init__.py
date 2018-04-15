@@ -3,7 +3,7 @@
 
 """The legacryptor package contains code to encrypt file using OpenPGP, given the different LocalEGA PGP public keys."""
 
-__title__ = 'Local EGA Cryptor'
+__title__ = 'LocalEGA-Cryptor'
 __version__ = VERSION = '0.1'
 __author__ = 'Frédéric Haziza <daz@nbis.se>'
 #__license__ = 'Apache 2.0'

@@ -10,6 +10,9 @@ import yaml
 import pgpy
 import hashlib
 
+from terminaltables import DoubleTable
+
+from . import __title__, __version__
 from .packet import parse_next_packet
 
 LOG = logging.getLogger(__name__)
@@ -34,19 +37,42 @@ def info2keyid(stream):
             _store[info] = key_id
     return _store
 
-
+class ListAction(argparse.Action):
+    def __init__(self, option_strings, dest, nargs=None, **kwargs):
+        if nargs is not None:
+            raise ValueError("nargs not allowed")
+        super(ListAction, self).__init__(option_strings, dest, **kwargs)
+    def __call__(self, parser, namespace, values, option_string=None):
+        print('%r %r %r' % (namespace, values, option_string))
+        setattr(namespace, self.dest, values)
+        
 def main(args=None):
 
     if not args:
         args = sys.argv[1:]
 
-    parser = argparse.ArgumentParser(description='''Encrypt file into a PGP message.''')
+    parser = argparse.ArgumentParser(prog='lega-cryptor',
+                                     description='''Encrypt file into a PGP message.''')
     parser.add_argument('--log'                               , help="The logger configuration file", default=DEFAULT_LOG)
+    parser.add_argument('-v','--version', action='version', version=f'{__title__} {__version__}')
+
+
+    # For Pubring
+    pubring_group = parser.add_argument_group('Public Keys')
+    pubring_group.add_argument('-l', '--list-keys', dest='list_keys',
+                               action='store_true',
+                               help="List the available public keys")
+    pubring_group.add_argument('-p','--pubring', dest='pubring',
+                               help=f"Path to the public key ring. If unspecified, it uses the one supplied with this package.",
+                               default=DEFAULT_PUBRING)
+
     # For Encryption
-    parser.add_argument('-p', '--pubring'   , dest="pubring"  , help=f"Path to the public key ring. If unspecified, it uses the one supplied with this package.", default=DEFAULT_PUBRING)
-    parser.add_argument('-o', '--output'    , dest='output'   , help="output directory for the 3 created files", default='.')
-    parser.add_argument('-r', '--recipient' , dest='recipient', help="Name, email or anything to find the recipient of the message in the adjacent keyring. If unspecified, it defaults to EBI.", default= '@ebi.ac.uk')
-    parser.add_argument('filename'                            , help="The path of the file to decrypt")
+    parser.add_argument('-o', '--output', dest='output',
+                        help="output directory for the 3 created files", default='.')
+    parser.add_argument('-r', '--recipient' , dest='recipient',
+                        help="Name, email or anything to find the recipient of the message in the adjacent keyring. If unspecified, it defaults to EBI.",
+                        default= '@ebi.ac.uk')
+    parser.add_argument('filename', nargs='*', help="The path of the files to decrypt")
 
     args = parser.parse_args()
 
@@ -57,9 +83,6 @@ def main(args=None):
             logging.config.dictConfig(yaml.load(stream))
         
     try:
-
-        basename = os.path.basename(args.filename)
-        prefix = os.path.join(args.output,basename)
 
         if args.output != '.':
             LOG.info("Creating output directory %s", args.output)
@@ -76,10 +99,24 @@ def main(args=None):
 
         LOG.debug('All keys: %s', recipients)
 
+        if args.list_keys:
+            list_data = [
+                ['KeyID','User Info']
+            ]
+            for name,key_id in recipients.items():
+                list_data.append([key_id, name])
+
+            print(f'Available keys from {args.pubring}')
+            table = DoubleTable(list_data)
+            print( table.table )
+            print('The first substring that matches the requested recipient will be used as the encryption key')
+            print('Alternatively, you can use the KeyID itself')
+            return
+
         LOG.debug('Finding key for "%s" in pubring', args.recipient)
         key_id = None
         for k,v in recipients.items():
-            if args.recipient in k:
+            if args.recipient in k or args.recipient == v:
                 key_id = v
                 break
 
@@ -90,30 +127,31 @@ def main(args=None):
         with ring.key(key_id) as pubkey: # raises error if not found
             LOG.info('Public Key (for %s) %s', args.recipient, repr(pubkey))
 
-            LOG.debug("Open output file: %s", args.output)
-            outfile = open(prefix+'.gpg', 'wb')
+            LOG.debug("Output files in: %s", args.output)
+            for f in args.filename:
 
-            LOG.debug("Loading file: %s", args.filename)
-            message = pgpy.PGPMessage.new(args.filename, file=True)
-            LOG.info("Encrypting file: %s", args.filename)
-            encrypted_message = pubkey.encrypt(message)
-            outfile.write(bytes(encrypted_message))
-            
-            LOG.debug("Closing output file: %s", args.output)
-            outfile.close()
+                basename = os.path.basename(f)
+                prefix = os.path.join(args.output,f)
+                outfile = open(prefix+'.gpg', 'wb')
+                LOG.debug("Loading file: %s", f)
+                message = pgpy.PGPMessage.new(f, file=True)
+                LOG.info("Encrypting file: %s", f)
+                encrypted_message = pubkey.encrypt(message)
+                outfile.write(bytes(encrypted_message))
+                outfile.close()
 
-        # Now... the checksums
-        LOG.info("Output md5 checksum into %s.md5", prefix)
-        m = hashlib.md5()
-        with open(args.filename, 'rb') as org, open(prefix+'.md5', 'wt') as orgmd5:
-            m.update(org.read())
-            orgmd5.write(m.hexdigest())
+                # Now... the checksums
+                LOG.info("Output md5 checksum into %s.md5", prefix)
+                m = hashlib.md5()
+                with open(f, 'rb') as org, open(prefix+'.md5', 'wt') as orgmd5:
+                    m.update(org.read())
+                    orgmd5.write(m.hexdigest())
 
-        LOG.info("Output md5 checksum into %s.gpg.md5", prefix)
-        m = hashlib.md5()
-        with open(prefix+'.gpg.md5', 'wt') as orggpgmd5, open(prefix+'.gpg', 'rb') as outfile:
-            m.update(outfile.read())
-            orggpgmd5.write(m.hexdigest())
+                LOG.info("Output md5 checksum into %s.gpg.md5", prefix)
+                m = hashlib.md5()
+                with open(prefix+'.gpg.md5', 'wt') as orggpgmd5, open(prefix+'.gpg', 'rb') as outfile:
+                    m.update(outfile.read())
+                    orggpgmd5.write(m.hexdigest())
 
     except Exception as e:
         print('Encryption failed')
