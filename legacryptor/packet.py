@@ -124,9 +124,31 @@ class UserIDPacket(Packet):
         s = super().__repr__()
         return f"{s} | {self.info}"
 
-# class SymEncryptedDataPacket(Packet):
-# class CompressedDataPacket(Packet):
-# class LiteralDataPacket(Packet):
+class SymEncryptedDataPacket(Packet):
+    def __init__(self, data, length, final):
+        self.data = data
+        super(SymEncryptedDataPacket,self).__init__(9, length, final)
+
+    def __bytes__(self):
+        return super(SymEncryptedDataPacket,self).__bytes__() + self.data
+
+class CompressedDataPacket(Packet):
+    def __init__(self, data, length, final):
+        self.data = data
+        super(CompressedDataPacket,self).__init__(8, length, final)
+
+    def __bytes__(self):
+        return super(CompressedDataPacket,self).__bytes__() + self.data
+
+class LiteralDataPacket(Packet):
+
+    def __init__(self, data, length, final):
+        self.data = data
+        assert( length = len(data) )
+        super(LiteralDataPacket,self).__init__(11, length, final)
+
+    def __bytes__(self):
+        return super(LiteralDataPacket,self).__bytes__() + self.data
 
 class PublicKeyEncryptedSessionKeyPacket(Packet):
 
@@ -154,7 +176,7 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         return bytes(pkt) + _bytes
 
 PACKET_TYPES = {
-    1: PublicKeyEncryptedSessionKeyPacket,
+    #1: PublicKeyEncryptedSessionKeyPacket,
     # # 2: SignaturePacket,
     # 5: SecretKeyPacket,
     6: PublicKeyPacket,
@@ -202,6 +224,16 @@ class Pubring():
 
     def empty(self):
         return len(self._store) == 0
+
+    def __repr__(self):
+        list_data = [
+            ('KeyID','User Info')
+        ]
+        for name,key_id in self._store.items():
+            list_data.append([key_id, name])
+        table = DoubleTable(list_data)
+        return table.table
+
 
 def print_packets(stream):
     while True:
