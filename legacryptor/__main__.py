@@ -9,8 +9,6 @@ import argparse
 
 import yaml
 
-from terminaltables import DoubleTable
-
 from . import __title__, __version__
 from .utils import is_power_two, encryptor, compressor
 from .packet import PublicKeyEncryptedSessionKeyPacket, Pubring, LiteralDataPacket
@@ -49,23 +47,29 @@ def main(args=None):
 
 
     # For Pubring
-    pubring_group = parser.add_argument_group('Public Keys')
-    pubring_group.add_argument('-l', '--list-keys', dest='list_keys',
-                               action='store_true',
-                               help="List the available public keys")
-    pubring_group.add_argument('-p','--pubring', dest='pubring',
-                               help=f"Path to the public key ring. If unspecified, it uses the one supplied with this package.",
-                               default=DEFAULT_PUBRING)
-
+    recipients = parser.add_argument_group('About the Recipients')
+    recipients.add_argument('-l', '--list-keys', dest='list_keys',
+                            action='store_true',
+                            help="List the available public keys and exits")
+    recipients.add_argument('-p','--pubring', dest='pubring',
+                            help=f"Path to the public key ring. If unspecified, it uses the one supplied with this package.",
+                            default=DEFAULT_PUBRING)
+    recipients.add_argument('-r', '--recipient' , dest='recipient',
+                            help="Name, email or anything to find the recipient of the message in the adjacent keyring. If unspecified, it defaults to EBI.",
+                            default= '@ebi.ac.uk')
+    
     # For Encryption
-    parser.add_argument('-o', '--output', dest='output',
-                        help="output directory for the 3 created files", default='.')
-    parser.add_argument('-r', '--recipient' , dest='recipient',
-                        help="Name, email or anything to find the recipient of the message in the adjacent keyring. If unspecified, it defaults to EBI.",
-                        default= '@ebi.ac.uk')
+    encryption = parser.add_argument_group('About the Encryption')
+    encryption.add_argument('-s', '--chunk_size', dest='chunk',
+                            help="Size of the chunks. Must be a power of 2. [Default: 4096 bytes]",
+                            default=4096) # 1 << 12
+    encryption.add_argument('-o', '--output', dest='output',
+                            help="output directory for the 3 created files",
+                            default='.')
+
+    # Finally... the list of files
     parser.add_argument('filename', nargs='*', help="The path of the files to decrypt")
 
-    parser.add_argument('-s', '--chunk_size', dest='chunk'    , help="Size of the chunks. Must be a power of 2. [Default: 4096 bytes]", default=4096) # 1 << 12
 
     args = parser.parse_args()
 
@@ -75,7 +79,6 @@ def main(args=None):
         with open(logpath, 'rt') as stream:
             logging.config.dictConfig(yaml.load(stream))
         
-    outfile = sys.stdout.buffer # default
     try:
         if not is_power_two(args.chunk):
             raise ValueError(f'The --chunk_size value "{args.chunk}" should be a power of 2')
@@ -110,36 +113,33 @@ def main(args=None):
 
             basename = os.path.basename(f)
             prefix = os.path.join(args.output,f)
-            outfile = open(prefix+'.gpg', 'wb')
-            LOG.info("Encrypting file: %s", f)
+            LOG.info("Encrypting %s into %s.gpg", f, prefix)
+            with open(prefix+'.gpg', 'wb') as outfile:
 
-            engine = process(pubkey)
-            encrypted_session_key = next(engine)
-            LOG.debug("Create Public Key Encrypted Session Key Packet")
-            pesk = PublicKeyEncryptedSessionKeyPacket(encrypted_session_key, pubkey.key_id, pubkey.raw_pub_algorithm)
-            LOG.debug("Outputing Public Key Encrypted Session Key Packet: %s", repr(pesk))
-            outfile.write(bytes(pesk))
-
-            LOG.debug("Encrypting file: %s", f)
-            with open(f, 'rb') as infile:
-                chunk1 = bytearray(args.chunk)
-                chunk2 = bytearray(args.chunk)
-                chunk_size1 = infile.readinto(chunk1)
-                chunk_size2 = infile.readinto(chunk2)
-                while True:
-                    final = (chunk_size2 == 0) # true if chunk2 is empty
-                    packet = LiteralDataPacket(chunk1, chunk_size1, final)
-                    encrypted_data = engine.send(packet)
-                    outfile.write(encrypted_data)
-                    if final:
-                        break
-                    # Move chunk2 to chunk1, and read into chunk2
-                    chunk1, chunk2 = chunk2, chunk1 # swap names, don't touch memory allocation
-                    chunk_size1 = chunk_size2
+                engine = process(pubkey)
+                encrypted_session_key = next(engine)
+                LOG.debug("Create Public Key Encrypted Session Key Packet")
+                pesk = PublicKeyEncryptedSessionKeyPacket(encrypted_session_key, pubkey.key_id, pubkey.raw_pub_algorithm)
+                LOG.debug("Outputing Public Key Encrypted Session Key Packet: %s", repr(pesk))
+                outfile.write(bytes(pesk))
+                
+                LOG.debug("Streaming content of %s", f)
+                with open(f, 'rb') as infile:
+                    chunk1 = bytearray(args.chunk)
+                    chunk2 = bytearray(args.chunk)
+                    chunk_size1 = infile.readinto(chunk1)
                     chunk_size2 = infile.readinto(chunk2)
-
-            LOG.debug("Closing output file: %s", args.output)
-            outfile.close()
+                    while True:
+                        final = (chunk_size2 == 0) # true if chunk2 is empty
+                        packet = LiteralDataPacket(chunk1, chunk_size1, final)
+                        encrypted_data = engine.send(packet)
+                        outfile.write(encrypted_data)
+                        if final:
+                            break
+                        # Move chunk2 to chunk1, and read into chunk2
+                        chunk1, chunk2 = chunk2, chunk1 # swap names, don't touch memory allocation
+                        chunk_size1 = chunk_size2
+                        chunk_size2 = infile.readinto(chunk2)
 
             # Now... the checksums
             LOG.info("Output md5 checksum into %s.md5", prefix)

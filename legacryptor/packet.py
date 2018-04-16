@@ -7,6 +7,8 @@ import io
 from datetime import datetime
 import hashlib
 
+from terminaltables import DoubleTable
+
 from .constants import lookup_pub_algorithm, lookup_sym_algorithm, lookup_hash_algorithm, lookup_s2k, lookup_tag
 from .utils import (make_rsa_key, make_dsa_key, make_elg_key,
                     PGPError, read_1_byte, get_mpi, read_4_bytes,
@@ -144,7 +146,7 @@ class LiteralDataPacket(Packet):
 
     def __init__(self, data, length, final):
         self.data = data
-        assert( length = len(data) )
+        assert( length == len(data) )
         super(LiteralDataPacket,self).__init__(11, length, final)
 
     def __bytes__(self):
@@ -212,7 +214,7 @@ class Pubring():
                 pubkey = packet
             elif packet.tag == 13: # packet 13 must be after a tag 6
                 LOG.debug('Loading Key "%s" (Key ID %s)', packet.info, pubkey.key_id)
-                self._store[packet.info] = pubkey # packet.info is a str
+                self._store[packet.info] = pubkey.key_id # packet.info is a str
 
     def __getitem__(self, recipient):
         for info, key in self._store.items():
