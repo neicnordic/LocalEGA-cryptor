@@ -4,19 +4,12 @@
 import sys
 import os
 import logging
-import logging.config
-import argparse
 
-import yaml
-
-from . import __title__, __version__
-from .utils import is_power_two, encryptor, compressor
+from .cli import parse_args
+from .utils import encryptor, compressor
 from .packet import PublicKeyEncryptedSessionKeyPacket, Pubring, LiteralDataPacket
 
 LOG = logging.getLogger(__name__)
-
-DEFAULT_LOG = os.getenv('LOG_YML', os.path.join(os.path.dirname(__file__),'logger.yaml'))
-DEFAULT_PUBRING = os.getenv('LEGA_PUBRING', os.path.join(os.path.dirname(__file__),'pubring.bin'))
 
 def process(pubkey):
     encryption_engine = encryptor(pubkey)
@@ -35,130 +28,91 @@ def process(pubkey):
         cleardata = yield encrypted_packet
     # literal_stream = LiteralDataPacket(stream,data_length...)
             
-def main(args=None):
+def main():
 
-    if not args:
-        args = sys.argv[1:]
+    # Parse CLI arguments
+    args = parse_args()
 
-    parser = argparse.ArgumentParser(prog='lega-cryptor',
-                                     description='''Encrypt file into a PGP message.''')
-    parser.add_argument('--log'                               , help="The logger configuration file", default=DEFAULT_LOG)
-    parser.add_argument('-v','--version', action='version', version=f'{__title__} {__version__}')
+    # Create output dir, if necessary
+    if args.output != '.':
+        LOG.info("Creating output directory %s", args.output)
+        os.makedirs(args.output, exist_ok=True)
 
+    # Loading the pubring
+    pubringpath = os.path.abspath(args.pubring)
+    LOG.debug("Loading ring %s", pubringpath)
+    ring = None
+    with open(pubringpath, 'rb') as stream:
+        ring = Pubring(stream)
 
-    # For Pubring
-    recipients = parser.add_argument_group('About the Recipients')
-    recipients.add_argument('-l', '--list-keys', dest='list_keys',
-                            action='store_true',
-                            help="List the available public keys and exits")
-    recipients.add_argument('-p','--pubring', dest='pubring',
-                            help=f"Path to the public key ring. If unspecified, it uses the one supplied with this package.",
-                            default=DEFAULT_PUBRING)
-    recipients.add_argument('-r', '--recipient' , dest='recipient',
-                            help="Name, email or anything to find the recipient of the message in the adjacent keyring. If unspecified, it defaults to EBI.",
-                            default= '@ebi.ac.uk')
-    
-    # For Encryption
-    encryption = parser.add_argument_group('About the Encryption')
-    encryption.add_argument('-s', '--chunk_size', dest='chunk',
-                            help="Size of the chunks. Must be a power of 2. [Default: 4096 bytes]",
-                            default=4096) # 1 << 12
-    encryption.add_argument('-o', '--output', dest='output',
-                            help="output directory for the 3 created files",
-                            default='.')
+    if not ring: # None or empty
+        raise ValueError(f'The public ring "{args.pubring}" was empty or not found')
 
-    # Finally... the list of files
-    parser.add_argument('filename', nargs='*', help="The path of the files to decrypt")
+    # If --list-keys, print and exit
+    if args.list_keys:
+        print(f'Available keys from {args.pubring}')
+        print( repr(ring) )
+        print('The first substring that matches the requested recipient will be used as the encryption key')
+        print('Alternatively, you can use the KeyID itself')
+        return
 
+    # Get recipient
+    LOG.debug('Finding key for "%s" in pubring', args.recipient)
+    pubkey = ring[args.recipient] # might raise PGPError if not found
+    LOG.info('Public Key (for %s) %s', args.recipient, repr(pubkey))
 
-    args = parser.parse_args()
+    # For eah file listed on the command line
+    LOG.debug("Output files in: %s", args.output)
+    for f in args.filename:
 
-    # Logging
-    logpath = os.path.abspath(args.log)
-    if os.path.exists(logpath):
-        with open(logpath, 'rt') as stream:
-            logging.config.dictConfig(yaml.load(stream))
-        
-    try:
-        if not is_power_two(args.chunk):
-            raise ValueError(f'The --chunk_size value "{args.chunk}" should be a power of 2')
+        basename = os.path.basename(f)
+        prefix = os.path.join(args.output,f)
+        LOG.info("Encrypting %s into %s.gpg", f, prefix)
+        with open(prefix+'.gpg', 'wb') as outfile:
 
-        if args.output != '.':
-            LOG.info("Creating output directory %s", args.output)
-            os.makedirs(args.output, exist_ok=True)
-
-        pubringpath = os.path.abspath(args.pubring)
-        LOG.debug("Loading ring %s", pubringpath)
-        ring = None
-        with open(pubringpath, 'rb') as stream:
-            ring = Pubring(stream)
-
-        if not ring: # None or empty
-            raise ValueError(f'The public ring "{args.pubring}" was empty or not found')
-
-        if args.list_keys:
-            print(f'Available keys from {args.pubring}')
-            print( repr(ring) )
-            print('The first substring that matches the requested recipient will be used as the encryption key')
-            print('Alternatively, you can use the KeyID itself')
-            return
-
-        LOG.debug('Finding key for "%s" in pubring', args.recipient)
-        pubkey = ring[args.recipient] # might raise PGPError if not found
-        LOG.info('Public Key (for %s) %s', args.recipient, repr(pubkey))
-
-
-        LOG.debug("Output files in: %s", args.output)
-        for f in args.filename:
-
-            basename = os.path.basename(f)
-            prefix = os.path.join(args.output,f)
-            LOG.info("Encrypting %s into %s.gpg", f, prefix)
-            with open(prefix+'.gpg', 'wb') as outfile:
-
-                engine = process(pubkey)
-                encrypted_session_key = next(engine)
-                LOG.debug("Create Public Key Encrypted Session Key Packet")
-                pesk = PublicKeyEncryptedSessionKeyPacket(encrypted_session_key, pubkey.key_id, pubkey.raw_pub_algorithm)
-                LOG.debug("Outputing Public Key Encrypted Session Key Packet: %s", repr(pesk))
-                outfile.write(bytes(pesk))
-                
-                LOG.debug("Streaming content of %s", f)
-                with open(f, 'rb') as infile:
-                    chunk1 = bytearray(args.chunk)
-                    chunk2 = bytearray(args.chunk)
-                    chunk_size1 = infile.readinto(chunk1)
+            engine = process(pubkey)
+            encrypted_session_key = next(engine)
+            LOG.debug("Create Public Key Encrypted Session Key Packet")
+            pesk = PublicKeyEncryptedSessionKeyPacket(encrypted_session_key, pubkey.key_id, pubkey.raw_pub_algorithm)
+            LOG.debug("Outputing Public Key Encrypted Session Key Packet: %s", repr(pesk))
+            outfile.write(bytes(pesk))
+            
+            LOG.debug("Streaming content of %s", f)
+            with open(f, 'rb') as infile:
+                chunk1 = bytearray(args.chunk)
+                chunk2 = bytearray(args.chunk)
+                chunk_size1 = infile.readinto(chunk1)
+                chunk_size2 = infile.readinto(chunk2)
+                while True:
+                    final = (chunk_size2 == 0) # true if chunk2 is empty
+                    packet = LiteralDataPacket(chunk1, chunk_size1, final)
+                    encrypted_data = engine.send(packet)
+                    outfile.write(encrypted_data)
+                    if final:
+                        break
+                    # Move chunk2 to chunk1, and read into chunk2
+                    chunk1, chunk2 = chunk2, chunk1 # swap names, don't touch memory allocation
+                    chunk_size1 = chunk_size2
                     chunk_size2 = infile.readinto(chunk2)
-                    while True:
-                        final = (chunk_size2 == 0) # true if chunk2 is empty
-                        packet = LiteralDataPacket(chunk1, chunk_size1, final)
-                        encrypted_data = engine.send(packet)
-                        outfile.write(encrypted_data)
-                        if final:
-                            break
-                        # Move chunk2 to chunk1, and read into chunk2
-                        chunk1, chunk2 = chunk2, chunk1 # swap names, don't touch memory allocation
-                        chunk_size1 = chunk_size2
-                        chunk_size2 = infile.readinto(chunk2)
 
-            # Now... the checksums
-            LOG.info("Output md5 checksum into %s.md5", prefix)
-            m = hashlib.md5()
-            with open(f, 'rb') as org, open(prefix+'.md5', 'wt') as orgmd5:
-                m.update(org.read())
-                orgmd5.write(m.hexdigest())
+        # Now... the checksums
+        LOG.info("Output md5 checksum into %s.md5", prefix)
+        m = hashlib.md5()
+        with open(f, 'rb') as org, open(prefix+'.md5', 'wt') as orgmd5:
+            m.update(org.read())
+            orgmd5.write(m.hexdigest())
+            
+        LOG.info("Output md5 checksum into %s.gpg.md5", prefix)
+        m = hashlib.md5()
+        with open(prefix+'.gpg.md5', 'wt') as orggpgmd5, open(prefix+'.gpg', 'rb') as outfile:
+            m.update(outfile.read())
+            orggpgmd5.write(m.hexdigest())
 
-            LOG.info("Output md5 checksum into %s.gpg.md5", prefix)
-            m = hashlib.md5()
-            with open(prefix+'.gpg.md5', 'wt') as orggpgmd5, open(prefix+'.gpg', 'rb') as outfile:
-                m.update(outfile.read())
-                orggpgmd5.write(m.hexdigest())
-
+if __name__ == '__main__':
+    try:
+        main()
     except Exception as e:
         print('Encryption failed')
         LOG.error(repr(e))
         print(e, file=sys.stderr)
         sys.exit(2)
-
-if __name__ == '__main__':
-    main()
