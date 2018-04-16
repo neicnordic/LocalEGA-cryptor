@@ -224,15 +224,15 @@ class Pubring():
         # else:
         raise PGPError(f'No public key found for {recipient}')
 
-    def empty(self):
-        return len(self._store) == 0
+    def __bool__(self):
+        return len(self._store) > 0
 
     def __repr__(self):
         list_data = [
-            ('KeyID','User Info')
+            ('Key ID','User Info')
         ]
         for name,key_id in self._store.items():
-            list_data.append([key_id, name])
+            list_data.append( (key_id, name) )
         table = DoubleTable(list_data)
         return table.table
 

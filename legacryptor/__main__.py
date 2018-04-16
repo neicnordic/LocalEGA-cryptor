@@ -93,7 +93,7 @@ def main(args=None):
         with open(pubringpath, 'rb') as stream:
             ring = Pubring(stream)
 
-        if ring is None or ring.empty():
+        if not ring: # None or empty
             raise ValueError(f'The public ring "{args.pubring}" was empty or not found')
 
         if args.list_keys:
@@ -157,7 +157,7 @@ def main(args=None):
     except Exception as e:
         print('Encryption failed')
         LOG.error(repr(e))
-        print(repr(e), file=sys.stderr)
+        print(e, file=sys.stderr)
         sys.exit(2)
 
 if __name__ == '__main__':
