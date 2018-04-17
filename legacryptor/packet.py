@@ -18,13 +18,15 @@ LOG = logging.getLogger(__name__)
 class Packet(object):
     '''The base packet object containing various fields pulled from the packet
     header as well as a slice of the packet data.'''
-    def __init__(self, tag):
+    def __init__(self, tag=None, new_format=True, length_type=None):
         self.tag = tag
-        self.name = lookup_tag(self.tag)
+        self.name = lookup_tag(self.tag) if tag else "Unknown"
         self.first_time = True
+        self.new_format = new_format
+        self.length_type = length_type
 
     def parse(self, data):
-        length, _ = parse_length(data)
+        length, _ = parse_length(data, self.new_format, self.length_type)
         data.seek( length , io.SEEK_CUR )
 
     def __str__(self):
@@ -38,16 +40,16 @@ class Packet(object):
             self.first_time = False
             # new format only 0xC0 = 0x80 | 0x40 = b11000000
             tag = (0xC0 | self.tag).to_bytes(1,'big')
-           return tag + encode_length(length, partial) + data
+            return tag + encode_length(length, partial) + data
         return encode_length(length, partial) + data
 
 class PublicKeyPacket(Packet):
 
-    def __init__(self):
-        super().__init__(6)
+    def __init__(self, **kwargs):
+        super().__init__(tag=6, **kwargs)
 
     def parse(self, data):
-        length, partial = parse_length(data)
+        length, partial = parse_length(data, self.new_format, self.length_type)
         start_pos = data.tell()
         assert( not partial )
         self.pubkey_version = read_1_byte(data)
@@ -118,11 +120,11 @@ class UserIDPacket(Packet):
     '''A User ID packet consists of UTF-8 text that is intended to represent
     the name and email address of the key holder. By convention, it includes an
     RFC 2822 mail name-addr, but there are no restrictions on its content.'''
-    def __init__(self):
-        super().__init__(13)
+    def __init__(self, **kwargs):
+        super().__init__(tag=13, **kwargs)
 
     def parse(self, data):
-        length, partial = parse_length(data)
+        length, partial = parse_length(data, self.new_format, self.length_type)
         assert( not partial )
         self.info = data.read(length).decode('utf8')
 
@@ -131,16 +133,16 @@ class UserIDPacket(Packet):
         return f"{s} | {self.info}"
 
 class SymEncryptedDataPacket(Packet):
-    def __init__(self):
-        super().__init__(9)
+    def __init__(self, **kwargs):
+        super().__init__(tag=9, **kwargs)
 
 class CompressedDataPacket(Packet):
-    def __init__(self):
-        super().__init__(8)
+    def __init__(self, **kwargs):
+        super().__init__(tag=8, **kwargs)
 
 class LiteralDataPacket(Packet):
-    def __init__(self):
-        super().__init__(11)
+    def __init__(self, **kwargs):
+        super().__init__(tag=11, **kwargs)
 
 class PublicKeyEncryptedSessionKeyPacket(Packet):
 
@@ -153,7 +155,7 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
     def __init__(self, encrypted_data, key_id, alg):
         self.encrypted_data = encrypted_data
         length = 10 + len(encrypted_data) # 1 + 8 + 1: version + key + algo
-        super().__init__(1) # not partial
+        super().__init__(tag=1) # not partial
         self.version = 3
         self.key_id = key_id
         self.raw_pub_algorithm = alg
@@ -163,9 +165,9 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         _bytes += self.key_id.encode() # hex str -> bytes
         _bytes += self.raw_pub_algorithm.to_bytes(1, 'big')
         _bytes += self.encrypted_data
-        pkt = Packet(1)
+        pkt = Packet(tag=1)
         LOG.debug('Making a header packet: %s', repr(pkt))
-        return bytes(pkt) + pkt(_bytes, len(_bytes), False)
+        return pkt(_bytes, len(_bytes), False)
 
 PACKET_TYPES = {
     1: PublicKeyEncryptedSessionKeyPacket,
@@ -187,8 +189,11 @@ def parse_next_packet(data):
     tag = parse_tag(data)
     if tag is None:
         return None
+    tag, new_format, length_type = tag
     PacketType = PACKET_TYPES.get(tag, Packet)
-    return PacketType()
+    if PacketType == Packet:
+        return PacketType(tag=tag, new_format=new_format, length_type=length_type)
+    return PacketType(new_format=new_format, length_type=length_type)
 
 def print_packets(stream):
     while True:

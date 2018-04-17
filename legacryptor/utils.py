@@ -166,19 +166,24 @@ def parse_tag(data):
 
     # tag encoded in bits 5-0 (new packet format)
     tag = b & 0x3f
-    return tag
 
-def parse_length(data, new_format, tag):
     if new_format:
         # length is encoded in the second (and following) octet
-        return new_tag_length(data)
+        return (tag, True, None)
     else:
         tag >>= 2 # tag encoded in bits 5-2, discard bits 1-0
         length_type = b & 0x03 # get the last 2 bits
+        return (tag, False, length_type)
+
+def parse_length(data, new_format, length_type):
+    if new_format:
+        return new_tag_length(data)
+    else:
         return old_tag_length(data, length_type)
 
 def encode_length(length, partial): # new format only
     '''Encode the length header'''
+    LOG.debug(f'Encoding length {length} / partial {partial}')
     if partial:
         # partial length, 224 <= l < 255
         assert( is_power_two(length) )
@@ -274,13 +279,13 @@ def compressor(pubkey):
         engine = Passthrough()
         
     elif algo == 1: # Zip deflate
-        engine = zlib.decompressobj(-15)
+        engine = zlib.compressobj(-15)
         
     elif algo == 2: # Zip deflate with zlib header
-        engine = zlib.decompressobj()
+        engine = zlib.compressobj()
         
     elif algo == 3: # Bzip2
-        engine = bz2.decompressobj()
+        engine = bz2.compressobj()
     else:
         raise NotImplementedError()
 

@@ -20,13 +20,13 @@ class Pubring():
                 packet = parse_next_packet(stream)
                 if packet is None:
                     break
-                packet.parse()
+                packet.parse(stream)
                 if packet.tag == 6:
                     pubkey = packet
                 elif packet.tag == 13: # packet 13 must be after a tag 6
                     LOG.debug('Loading Key "%s" (Key ID %s)', packet.info, pubkey.key_id)
                     self._store[packet.info] = pubkey # packet.info is a str
-        if not _store: # empty
+        if not self._store: # empty
             raise ValueError(f'The public ring "{p}" was empty or not found')
 
 
@@ -47,7 +47,7 @@ class Pubring():
             list_data.append( (key.key_id, name) )
         table = DoubleTable(list_data)
         return f'''\
-        Available keys from {self._path}
-        {table.table}
-        The first substring that matches the requested recipient will be used as the encryption key
-        Alternatively, you can use the KeyID itself'''
+Available keys from {self._path}
+{table.table}
+The first substring that matches the requested recipient will be used as the encryption key
+Alternatively, you can use the KeyID itself'''
