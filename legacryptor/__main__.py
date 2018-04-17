@@ -50,12 +50,7 @@ def main():
     # Loading the pubring
     pubringpath = os.path.abspath(args.pubring)
     LOG.debug("Loading ring %s", pubringpath)
-    ring = None
-    with open(pubringpath, 'rb') as stream:
-        ring = Pubring(stream)
-
-    if not ring: # None or empty
-        raise ValueError(f'The public ring "{args.pubring}" was empty or not found')
+    ring = Pubring(pubringpath)
 
     # If --list-keys, print and exit
     if args.list_keys:
