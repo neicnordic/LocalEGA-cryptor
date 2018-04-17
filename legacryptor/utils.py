@@ -113,7 +113,7 @@ def new_tag_length(data):
 
     return (length, partial)
 
-def parse_header(data):
+def parse_tag(data):
     """\
     A packet is composed of (in order) a `tag`, a `length` and a `body`.
 
@@ -166,15 +166,16 @@ def parse_header(data):
 
     # tag encoded in bits 5-0 (new packet format)
     tag = b & 0x3f
+    return tag
 
+def parse_length(data, new_format, tag):
     if new_format:
         # length is encoded in the second (and following) octet
-        data_length, partial = new_tag_length(data)
+        return new_tag_length(data)
     else:
         tag >>= 2 # tag encoded in bits 5-2, discard bits 1-0
         length_type = b & 0x03 # get the last 2 bits
-        data_length, partial = old_tag_length(data, length_type)
-    return (tag, data_length, partial)
+        return old_tag_length(data, length_type)
 
 def encode_length(length, partial): # new format only
     '''Encode the length header'''

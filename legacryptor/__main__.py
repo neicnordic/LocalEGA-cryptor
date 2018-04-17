@@ -7,26 +7,35 @@ import logging
 
 from .cli import parse_args
 from .utils import encryptor, compressor
-from .packet import PublicKeyEncryptedSessionKeyPacket, Pubring, LiteralDataPacket
+from .packet import PublicKeyEncryptedSessionKeyPacket, LiteralDataPacket
+from .pubring import Pubring
 
 LOG = logging.getLogger(__name__)
 
-def process(pubkey):
+def compress_processor(pubkey, encryption_engine):
+    compressor_engine = compressor(pubkey) # ignore preference
+    compressed_packet = CompressedDataPacket() 
+    encrypted_packet = SymEncryptedDataPacket()
+    data, final = yield
+    while True:
+        if data is None:
+            break
+        compressed_data = compressor_engine.compress(data)
+        if final:
+            compressed_data += compressor_engine.flush()
+        encrypted_data = encryption_engine.send( compressed_packet(compressed_data, len(compressed_data), final) )
+        data, final = yield encrypted_packet(encrypted_data, len(encrypted_data), final)
+
+def encrypt_process(pubkey):
     encryption_engine = encryptor(pubkey)
-    cleardata = yield next(encryption_engine)
-    compression_engine = compressor(pubkey)
+    cleardata, final = yield next(encryption_engine)
+    compression_engine = compress_processor(pubkey, encryption_engine)
+    next(compression_engine)
     while True:
         if cleardata is None:
             break
         # ... do the job
-        compressed_data = engine.compress(cleardata)
-        if cleardata.final:
-            compressed_data += engine.flush()
-        compressed_packet = CompressedDataPacket(compressed_data, len(compressed_data), cleardata.final)
-        encrypted_data = encryption_engine.send(compressed_packet)
-        encrypted_packet = SymEncryptedDataPacket(encrypted_data, len(encrypted_data), cleardata.final)
-        cleardata = yield encrypted_packet
-    # literal_stream = LiteralDataPacket(stream,data_length...)
+        cleardata, final = yield compression_engine.send( (cleardata,final) )
             
 def main():
 
@@ -70,7 +79,7 @@ def main():
         LOG.info("Encrypting %s into %s.gpg", f, prefix)
         with open(prefix+'.gpg', 'wb') as outfile:
 
-            engine = process(pubkey)
+            engine = encrypt_processor(pubkey)
             encrypted_session_key = next(engine)
             LOG.debug("Create Public Key Encrypted Session Key Packet")
             pesk = PublicKeyEncryptedSessionKeyPacket(encrypted_session_key, pubkey.key_id, pubkey.raw_pub_algorithm)
@@ -83,10 +92,11 @@ def main():
                 chunk2 = bytearray(args.chunk)
                 chunk_size1 = infile.readinto(chunk1)
                 chunk_size2 = infile.readinto(chunk2)
+                packet = LiteralDataPacket()
                 while True:
                     final = (chunk_size2 == 0) # true if chunk2 is empty
-                    packet = LiteralDataPacket(chunk1, chunk_size1, final)
-                    encrypted_data = engine.send(packet)
+                    data = packet(chunk1, chunk_size1, final)
+                    encrypted_data = engine.send(data)
                     outfile.write(encrypted_data)
                     if final:
                         break
