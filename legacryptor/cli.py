@@ -22,6 +22,15 @@ def parse_args(args=None):
     parser.add_argument('-v','--version', action='version', version=f'{__title__} {__version__}')
 
     # For Pubring
+    server = parser.add_argument_group('About the PGP KeyServer')
+    server.add_argument('-s', '--server', dest='server',
+                        help="Endpoint to query public keys",
+                        default="https://pgp.nbis.se/get/")
+    server.add_argument('-n','--offline', dest='offline',
+                        action='store_true',
+                        help="Disable the server queries and load a local pubring")
+    
+    # For Pubring
     recipients = parser.add_argument_group('About the Recipients')
     recipients.add_argument('-l', '--list-keys', dest='list_keys',
                             action='store_true',
@@ -35,7 +44,7 @@ def parse_args(args=None):
     
     # For Encryption
     encryption = parser.add_argument_group('About the Encryption')
-    encryption.add_argument('-s', '--chunk_size', dest='chunk',
+    encryption.add_argument('-c', '--chunk_size', dest='chunk',
                             help="Size of the chunks. Must be a power of 2. [Default: 4096 bytes]",
                             default=4096) # 1 << 12
     encryption.add_argument('-o', '--output', dest='output',

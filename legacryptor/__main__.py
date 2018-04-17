@@ -45,9 +45,15 @@ def main():
         return
 
     # Get recipient
-    LOG.debug('Finding key for "%s" in pubring', args.recipient)
-    pubkey = ring[args.recipient] # might raise PGPError if not found
-    LOG.info('Public Key (for %s) %s', args.recipient, repr(pubkey))
+    if not args.offline:
+        from urllib.parse import quote
+        endpoint = args.server + quote(args.recipient)
+        LOG.debug('Contacting %s', endpoint)
+        raise NotImplementedError()
+    else:
+        LOG.debug('Finding key for "%s" in pubring %s', args.recipient, args.pubring)
+        pubkey = ring[args.recipient] # might raise PGPError if not found
+        LOG.info('Public Key (for %s) %s', args.recipient, repr(pubkey))
 
     # For eah file listed on the command line
     LOG.debug("Output files in: %s", args.output)
