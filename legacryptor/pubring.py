@@ -1,3 +1,4 @@
+import os
 import logging
 
 from terminaltables import DoubleTable
@@ -8,7 +9,10 @@ from .packet import parse_next_packet
 LOG = logging.getLogger(__name__)
 
 class Pubring():
-    def __init__(self, pubringpath):
+    def __init__(self, p):
+        self._path = p
+        pubringpath = os.path.abspath(p)
+        LOG.debug("Loading ring %s", pubringpath)
         self._store = {}
         with open(pubringpath, 'rb') as stream:
             pubkey = None
@@ -23,7 +27,7 @@ class Pubring():
                     LOG.debug('Loading Key "%s" (Key ID %s)', packet.info, pubkey.key_id)
                     self._store[packet.info] = pubkey # packet.info is a str
         if not _store: # empty
-            raise ValueError(f'The public ring "{pubringpath}" was empty or not found')
+            raise ValueError(f'The public ring "{p}" was empty or not found')
 
 
     def __getitem__(self, recipient):
@@ -42,6 +46,8 @@ class Pubring():
         for name,key in self._store.items():
             list_data.append( (key.key_id, name) )
         table = DoubleTable(list_data)
-        return table.table
-
-
+        return f'''\
+        Available keys from {self._path}
+        {table.table}
+        The first substring that matches the requested recipient will be used as the encryption key
+        Alternatively, you can use the KeyID itself'''

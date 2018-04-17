@@ -48,16 +48,11 @@ def main():
         os.makedirs(args.output, exist_ok=True)
 
     # Loading the pubring
-    pubringpath = os.path.abspath(args.pubring)
-    LOG.debug("Loading ring %s", pubringpath)
-    ring = Pubring(pubringpath)
+    ring = Pubring(args.pubring)
 
     # If --list-keys, print and exit
     if args.list_keys:
-        print(f'Available keys from {args.pubring}')
-        print( repr(ring) )
-        print('The first substring that matches the requested recipient will be used as the encryption key')
-        print('Alternatively, you can use the KeyID itself')
+        print(repr(ring))
         return
 
     # Get recipient
