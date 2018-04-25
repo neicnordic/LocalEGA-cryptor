@@ -6,15 +6,19 @@ import os
 import logging
 
 from .cli import parse_args
-from .utils import encryptor, compressor
+from .utils import encryptor, compressor as compressobj
 from .packet import PublicKeyEncryptedSessionKeyPacket, CompressedDataPacket, SymEncryptedDataPacket, LiteralDataPacket
 from .pubring import Pubring
 
 LOG = logging.getLogger(__name__)
 
-def processor(pubkey):
-    encryption_engine = encryptor(pubkey)
-    compressor_engine = compressor(pubkey) # ignore preference
+
+# Finished....
+# Needs to chunk the compressed stream
+# If not enough data, then we wait for some more from the parent stream
+
+def compressor(pubkey, chunk_size):
+    compressor_engine = compressobj(pubkey) # ignore preference
     literal_packet = LiteralDataPacket()
     compressed_packet = CompressedDataPacket() 
     encrypted_packet = SymEncryptedDataPacket()
@@ -23,7 +27,19 @@ def processor(pubkey):
         compressed_data = compressor_engine.compress(literal_packet(cleardata, size, final))
         if final:
             compressed_data += compressor_engine.flush()
-        encrypted_data = encryption_engine.send( compressed_packet(compressed_data, final) )
+        encrypted_data = encryption_engine.send( compressed_packet(compressed_data, len(compressed_data), final) )
+        cleardata, size, final = yield encrypted_packet(encrypted_data, len(encrypted_data), final)
+
+def processor(pubkey, chunk_size):
+    encryption_engine = encryptor(pubkey)
+    compressor_engine = compressor(pubkey, chunk_size) # ignore preference
+    encrypted_packet = SymEncryptedDataPacket()
+    cleardata, size, final = yield next(encryption_engine)
+    while True:
+        compressed_data = compressor_engine.send(literal_packet(cleardata, size, final))
+        if final:
+            compressed_data += compressor_engine.flush()
+        encrypted_data = encryption_engine.send( compressed_packet(compressed_data, len(compressed_data), final) )
         cleardata, size, final = yield encrypted_packet(encrypted_data, len(encrypted_data), final)
             
 def main():
@@ -78,10 +94,12 @@ def main():
                 chunk_size1 = infile.readinto(chunk1)
                 chunk_size2 = infile.readinto(chunk2)
                 partial = (chunk_size2 != 0)
+                literal_packet = LiteralDataPacket()
                 while True:
                     final = (chunk_size2 == 0) # true if chunk2 is empty
                     encrypted_data = engine.send( (chunk1, chunk_size1, partial and final) )
-                    outfile.write(encrypted_data)
+                    if encrypted_data:
+                        outfile.write(encrypted_data)
                     if final:
                         break
                     # Move chunk2 to chunk1, and read into chunk2
