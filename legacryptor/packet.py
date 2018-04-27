@@ -7,11 +7,11 @@ import io
 from datetime import datetime
 import hashlib
 
-from .constants import lookup_pub_algorithm, lookup_sym_algorithm, lookup_hash_algorithm, lookup_s2k, lookup_tag
-from .utils import (make_rsa_key, make_dsa_key, make_elg_key,
-                    PGPError, read_1_byte, get_mpi, read_4_bytes,
-                    encode_length, parse_tag, parse_length,
-                    chunker, compressor, encryptor)
+from .constants import lookup_pub_algorithm, lookup_tag
+from .utils import (RSAKey, DSAKey, ELGKey,
+                    read_1_byte, get_mpi, read_4_bytes,
+                    parse_tag, parse_length)
+
 
 LOG = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class Packet(object):
     header as well as a slice of the packet data.'''
     def __init__(self, tag=None, new_format=True, length_type=None):
         self.tag = tag
-        self.name = lookup_tag(self.tag) if tag else "Unknown"
+        self.name = lookup_tag(self.tag)
         self.first_time = True
         self.new_format = new_format
         self.length_type = length_type
@@ -34,14 +34,6 @@ class Packet(object):
 
     def __repr__(self):
         return str(self)
-
-    def __call__(self, data, length, partial):
-        if self.first_time:
-            self.first_time = False
-            # new format only 0xC0 = 0x80 | 0x40 = b11000000
-            tag = (0xC0 | self.tag).to_bytes(1,'big')
-            return tag + encode_length(length, partial) + data
-        return encode_length(length, partial) + data
 
 class PublicKeyPacket(Packet):
 
@@ -67,25 +59,25 @@ class PublicKeyPacket(Packet):
             # n, e
             n = get_mpi(data)
             e = get_mpi(data)
-            self._key = make_rsa_key(n, e)
+            self._key = RSAKey(n, e)
         elif self.raw_pub_algorithm == 17:
             # p, q, g, y
             p = get_mpi(data)
             q = get_mpi(data)
             g = get_mpi(data)
             y = get_mpi(data)
-            self._key = make_dsa_key(p, q, g, y)
+            self._key = DSAKey(p, q, g, y)
         elif self.raw_pub_algorithm in (16, 20):
             # p, g, y
             p = get_mpi(data)
             g = get_mpi(data)
             y = get_mpi(data)
-            self._key = None #make_elg_key(p, g, y)
+            self._key = ELGKey(p, g, y)
         elif 100 <= self.raw_pub_algorithm <= 110:
             # Private/Experimental algorithms, just move on
             self._key = None
         else:
-            raise PGPError(f"Unsupported public key algorithm {raw_pub_algorithm}")
+            raise ValueError(f"Unsupported public key algorithm {self.raw_pub_algorithm}")
 
         # Hashing only the public part (differs from self.length for private key packets)
         size = data.tell() - start_pos
@@ -98,22 +90,12 @@ class PublicKeyPacket(Packet):
 
     def __repr__(self):
         s = super().__repr__()
-        return f"{s} | {self.creation_time} | KeyID {self.key_id} (ver 4)({lookup_pub_algorithm(self.raw_pub_algorithm)[0]})"
+        return f"{s} | {self.creation_time} | KeyID {self.key_id} (ver 4)({lookup_pub_algorithm(self.raw_pub_algorithm)})"
 
-    # Since we ignore the Signature for the moment, we don't have
-    # a way to find the user's preference for the compression or
-    # the symmetric encryption algorithm.
-    #
-    # These 2 methods should be placed in the Signature Packet, related to that user
-    def preferred_encryption_algorithm(self):
-        # algid is currently ignored
-        # We fix it to AES-256, ie algo 9
-        return 9
-
-    def preferred_compression_algorithm(self):
-        # Compress algo if currently ignored
-        # It is set to "Zip deflate with zlib header"
-        return 2
+    def encrypt(self, data):
+        if self._key:
+            return self._key.encrypt(data)
+        raise NotImplementedError(f'Asymmetric key algorithm {lookup_pub_algorithm(self.raw_pub_algorithm)} not supported')
 
 
 class UserIDPacket(Packet):
@@ -132,57 +114,13 @@ class UserIDPacket(Packet):
         s = super().__repr__()
         return f"{s} | {self.info}"
 
-class SymEncryptedDataPacket(Packet):
-    def __init__(self, **kwargs):
-        super().__init__(tag=9, **kwargs)
-
-class CompressedDataPacket(Packet):
-    def __init__(self, **kwargs):
-        super().__init__(tag=8, **kwargs)
-
-class LiteralDataPacket(Packet):
-    def __init__(self, **kwargs):
-        super().__init__(tag=11, **kwargs)
-
-class PublicKeyEncryptedSessionKeyPacket(Packet):
-
-    def __repr__(self):
-        s = super().__repr__()
-        if hasattr(self, 'key_id'):
-            return f"{s} | keyID {self.key_id} ({lookup_pub_algorithm(self.raw_pub_algorithm)[0]})"
-        return s
-
-    def __init__(self, encrypted_data, key_id, alg):
-        self.encrypted_data = encrypted_data
-        length = 10 + len(encrypted_data) # 1 + 8 + 1: version + key + algo
-        super().__init__(tag=1) # not partial
-        self.version = 3
-        self.key_id = key_id
-        self.raw_pub_algorithm = alg
-
-    def __bytes__(self):
-        _bytes = self.version.to_bytes(1, 'big')
-        _bytes += self.key_id.encode() # hex str -> bytes
-        _bytes += self.raw_pub_algorithm.to_bytes(1, 'big')
-        _bytes += self.encrypted_data
-        pkt = Packet(tag=1)
-        LOG.debug('Making a header packet: %s', repr(pkt))
-        return pkt(_bytes, len(_bytes), False)
-
+# The only ones with need and support
 PACKET_TYPES = {
-    1: PublicKeyEncryptedSessionKeyPacket,
-    # # 2: SignaturePacket,
-    # 5: SecretKeyPacket,
+    #5: SecretKeyPacket,
     6: PublicKeyPacket,
-    # 7: SecretKeyPacket,
-    # 8: CompressedDataPacket,
-    # 9: SymEncryptedDataPacket,
-    # 11: LiteralDataPacket,
-    # 12: TrustPacket,
+    #7: SecretKeyPacket, # why would someone give us their private key?...
     13: UserIDPacket,
     14: PublicKeyPacket,
-    # # 17: UserAttributePacket,
-    # 18: SymEncryptedDataPacket,
 }
 
 def parse_next_packet(data):

@@ -1,15 +1,15 @@
+# -*- coding: utf-8 -*-
+
 import os
-import zlib 
+import zlib
 import hashlib
 import logging 
+import pgpy
 
-from cryptography.exceptions import UnsupportedAlgorithm
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers import Cipher, modes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, dsa, padding
-
-from .constants import lookup_sym_algorithm
+from cryptography.hazmat.primitives import hashes
 
 LOG = logging.getLogger(__name__)
 
@@ -116,9 +116,7 @@ def new_tag_length(data):
 def parse_tag(data):
     """\
     A packet is composed of (in order) a `tag`, a `length` and a `body`.
-
     A tag is one byte long and determine how many bytes the length is.
-
     There are two formats for tag:
     * old style: The length can be 0, 1, 2 or 4 byte(s) long.
     * new style: The length can be 1, 2, or 4 byte(s) long.
@@ -138,10 +136,8 @@ def parse_tag(data):
     | new-style   |          |       1       |             packet tag            |
     |             |          |               |                                   |
     +-------------+----------+---------------+-----------------------------------+
-
     With the old format, the tag includes the length, but the number of packet types is limited to 16.
     With the new format, the number of packet type can exceed 16, and the length are the following bytes.
-
     The length determines how many bytes the body is.
     Note that the new format can specify a length that encodes a body chunk by chunk.
    
@@ -181,112 +177,107 @@ def parse_length(data, new_format, length_type):
     else:
         return old_tag_length(data, length_type)
 
-def encode_length(length, partial): # new format only
-    '''Encode the length header'''
-    LOG.debug(f'Encoding length {length} / partial {partial}')
-    if partial:
-        # partial length, 224 <= l < 255
-        assert( is_power_two(length) )
-        assert( length.bit_length() < 16 and length & 0x1f == 0 )
-        return (length.bit_length() - 1).to_bytes(1,'big')
 
-    # one-octet
-    if length < 192:
-        return length.to_bytes(1,'big')
+###########################################################
+##
+##         Asymmetric Keys and Algorithms
+##
+###########################################################
 
-    # two-octet
-    if length < 8384:
-        elen = ((length & 0xFF00) + (192 << 8)) + ((length & 0xFF) - 192)
-        return elen.to_bytes(2,'big')
+class RSAKey():
+    def __init__(self, n, e):
+        '''Create an RSA key from the public numbers.'''
+        backend = default_backend()
+        self._key = rsa.RSAPublicNumbers(e,n).public_key(backend)
+        self._padding = padding.PKCS1v15()
+        # self._padding = padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+    def encrypt(self, data):
+        LOG.debug('Encrypting data with RSA key')
+        return self._key.encrypt(data, self._padding)
+        
+class DSAKey():
+    def __init__(self, p, q, g, y):
+        '''Create a DSA key from the public numbers.'''
+        backend = default_backend()
+        params = dsa.DSAParameterNumbers(p,q,g)
+        self._key = dsa.DSAPublicNumbers(y, params).public_key(backend)
+    def encrypt(self, data): 
+        LOG.debug('Encrypting data with DSA key')
+        return self._key.encrypt(data)
 
-    # five-octet
-    return b'\xFF' + length.to_bytes(4,'big')
+# ElGamal is not supported by the cryptography package
+# https://github.com/pyca/cryptography/issues/1363
+# PyCrypto does, so we could include the latter package if we really want to support ElGamal
+class ELGKey():
+    def __init__(self, p, q, y):
+        pass
+    def encrypt(self, data):
+        LOG.debug('Encrypting data with ELG key')
+        raise NotImplementedError('ElGamal is not supported')
 
-def make_rsa_key(n,e):
-    '''Convert a hex-based dict of values to an RSA key'''
+###########################################################
+##
+##         Crypt4GA header
+##
+###########################################################
+
+def pack_header(pubkey, session_key, nonce):
+    LOG.info('Creating a Crypt4GA header')
+    # This is, for the moment, a dummy placeholder
+    # It only concatenates the session key and nonce
+    # and encrypt the result with a PGP Public Key
+    # which internally uses an RSAKey or a DSAKey
+    return pubkey.encrypt(session_key + nonce)
+
+def unpack_header(privkey, data):
+    LOG.info('Unpacking a Crypt4GA header')
+    # This is a dummy placeholder at the moment
+    # Look below the session key is 32 bytes and the nonce is 16 bytes
+    header = privkey.decrypt(data.read(32+16))
+    session_key = header[:32]
+    nonce = header[32:]
+    return (session_key, nonce)
+
+###########################################################
+##
+##         AES encryption.
+##             including a sha256 checksum at the end
+##
+###########################################################
+def make_digest(digest):
+    '''Make a digest packet'''
+    d = digest.digest()
+    return b'\x0A'+ len(d).to_bytes(2, byteorder='big') + d
+
+def encryptor():
+    '''Generator that takes a block of data as input and encrypts it as output.
+
+    The encryption algorithm is AES (in CTR mode), using a randomly-created session key.
+
+    A sha256 checksum is appended.
+    '''
+
+    LOG.info('Starting the cipher engine')
+    session_key = os.urandom(32) # for AES-256
+    LOG.debug(f'session key    = {session_key}')
+
+    nonce = os.urandom(16)
+    LOG.debug(f'CTR nonce: {nonce}')
+
+    LOG.info('Creating AES cypher (CTR mode)')
     backend = default_backend()
-    return rsa.RSAPublicNumbers(e,n).public_key(backend)
+    cipher = Cipher(algorithms.AES(session_key), modes.CTR(nonce), backend=backend)
+    aes = cipher.encryptor()
 
-def make_dsa_key(p,q,g,y):
-    '''Convert a hex-based dict of values to a DSA key'''
-    backend = default_backend()
-    params = dsa.DSAParameterNumbers(p,q,g)
-    return dsa.DSAPublicNumbers(y, params).public_key(backend)
+    mdc = hashlib.sha256()
 
-def make_elg_key(p,q,y):
-    # backend = default_backend()
-    raise NotImplementedError()
-
-def pesk_encrypt(pubkey, m):
-    alg = pubkey.raw_pub_algorithm
-    args = (m,padding.PKCS1v15()) if alg in (1,2,3) else (m,)
-    enc_m = pubkey._key.encrypt(*args)
-    return to_mpi(int.from_bytes(enc_m, 'big'))
-
-def encryptor(pubkey):
-    '''It is a black box sitting and waiting for input data to be
-       encrypted, given the `alg` algorithm.'''
-
-    # algid is currently ignored
-    # We fix it to AES-256, ie algo 9
-    algid = pubkey.preferred_encryption_algorithm()
-    algoname, iv_len, alg = lookup_sym_algorithm(algid)
-    session_key = os.urandom(iv_len)
-
-    # The value "m" in the above formulas is derived from the session key
-    # as follows.  First, the session key is prefixed with a one-octet
-    # algorithm identifier that specifies the symmetric encryption
-    # algorithm used to encrypt the following Symmetrically Encrypted Data
-    # Packet.  Then a two-octet checksum is appended, which is equal to the
-    # sum of the preceding session key octets, not including the algorithm
-    # identifier, modulo 65536.  This value is then encoded as described in
-    # PKCS#1 block encoding EME-PKCS1-v1_5 in Section 7.2.1 of [RFC3447] to
-    # form the "m" value used in the formulas above.  See Section 13.1 of
-    # this document for notes on OpenPGP's use of PKCS#1.
-
-    m = algid.to_bytes(1,'big') + session_key + (sum(session_key) % 65536).to_bytes(2,'big')
-    block_size = alg.block_size // 8
-    iv = (0).to_bytes(block_size, byteorder='big')
-    try:
-        engine = Cipher(alg(session_key), modes.CFB(iv), backend=default_backend()).encryptor()
-    except UnsupportedAlgorithm as ex:
-        raise PGPError(ex)
-
-    prefix = os.urandom(block_size)
-    mdc = hashlib.new('SHA1')
-
-    indata, final = yield pesk_encrypt(pubkey, m)
-    indata = prefix + prefix[-2:] + indata # prefix plus repeat
+    clearchunk, final = yield (session_key, nonce)
     while True:
-        encrypted_data = engine.update(indata)
+        LOG.debug('Clearchunk: %s', clearchunk.decode())
+        encrypted_data = bytes(aes.update(bytes(clearchunk)))
         mdc.update(encrypted_data)
         if final:
-            final_data = engine.finalize()
+            final_data = aes.finalize()
             mdc.update(final_data)
-            mdc.update(b'\xd3\x14')
-            encrypted_data += final_data + mdc.digest()
-        indata, final = yield encrypted_data
-
-class Passthrough():
-    def compress(data):
-        return data
-    def flush():
-        return b''
-
-def compressor(pubkey):
-    algo = pubkey.preferred_compression_algorithm()
-    if algo == 0: # Uncompressed
-        engine = Passthrough()
-        
-    elif algo == 1: # Zip deflate
-        engine = zlib.compressobj(-15)
-        
-    elif algo == 2: # Zip deflate with zlib header
-        engine = zlib.compressobj()
-        
-    elif algo == 3: # Bzip2
-        engine = bz2.compressobj()
-    else:
-        raise NotImplementedError()
-
-    return engine
+            encrypted_data += final_data + make_digest(mdc)
+        clearchunk, final = yield encrypted_data

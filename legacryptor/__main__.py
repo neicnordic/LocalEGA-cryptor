@@ -6,43 +6,14 @@ import os
 import logging
 
 from .cli import parse_args
-from .utils import encryptor, compressor as compressobj
-from .packet import PublicKeyEncryptedSessionKeyPacket, CompressedDataPacket, SymEncryptedDataPacket, LiteralDataPacket
 from .pubring import Pubring
+from .encrypt import encrypt_files
+from .decrypt import decrypt_files
+from .reencrypt import reencrypt_files
 
 LOG = logging.getLogger(__name__)
 
-
-# Finished....
-# Needs to chunk the compressed stream
-# If not enough data, then we wait for some more from the parent stream
-
-def compressor(pubkey, chunk_size):
-    compressor_engine = compressobj(pubkey) # ignore preference
-    literal_packet = LiteralDataPacket()
-    compressed_packet = CompressedDataPacket() 
-    encrypted_packet = SymEncryptedDataPacket()
-    cleardata, size, final = yield next(encryption_engine)
-    while True:
-        compressed_data = compressor_engine.compress(literal_packet(cleardata, size, final))
-        if final:
-            compressed_data += compressor_engine.flush()
-        encrypted_data = encryption_engine.send( compressed_packet(compressed_data, len(compressed_data), final) )
-        cleardata, size, final = yield encrypted_packet(encrypted_data, len(encrypted_data), final)
-
-def processor(pubkey, chunk_size):
-    encryption_engine = encryptor(pubkey)
-    compressor_engine = compressor(pubkey, chunk_size) # ignore preference
-    encrypted_packet = SymEncryptedDataPacket()
-    cleardata, size, final = yield next(encryption_engine)
-    while True:
-        compressed_data = compressor_engine.send(literal_packet(cleardata, size, final))
-        if final:
-            compressed_data += compressor_engine.flush()
-        encrypted_data = encryption_engine.send( compressed_packet(compressed_data, len(compressed_data), final) )
-        cleardata, size, final = yield encrypted_packet(encrypted_data, len(encrypted_data), final)
-            
-def main():
+def run():
 
     # Parse CLI arguments
     args = parse_args()
@@ -65,66 +36,30 @@ def main():
         from urllib.parse import quote
         endpoint = args.server + quote(args.recipient)
         LOG.debug('Contacting %s', endpoint)
-        raise NotImplementedError()
+        pubkey = None
+        raise NotImplementedError('Non offline mode not implemented...yet')
     else:
         LOG.debug('Finding key for "%s" in pubring %s', args.recipient, args.pubring)
         pubkey = ring[args.recipient] # might raise PGPError if not found
         LOG.info('Public Key (for %s) %s', args.recipient, repr(pubkey))
 
-    # For eah file listed on the command line
-    LOG.debug("Output files in: %s", args.output)
-    for f in args.filename:
+    # For each file listed on the command line
+    if args.encrypt:
+        encrypt_files(pubkey, args)
+    elif args.decrypt:
+        decrypt_files(privkey, args)
+    elif args.reencrypt:
+        privkey = None # Get it from a keyserver. Similar to lega/openpgg/__main__.py
+        reencrypt_files(privkey, pubkey, args)
 
-        basename = os.path.basename(f)
-        prefix = os.path.join(args.output,f)
-        LOG.info("Encrypting %s into %s.gpg", f, prefix)
-        with open(prefix+'.gpg', 'wb') as outfile:
-
-            engine = processor(pubkey)
-            encrypted_session_key = next(engine)
-            LOG.debug("Create Public Key Encrypted Session Key Packet")
-            pesk = PublicKeyEncryptedSessionKeyPacket(encrypted_session_key, pubkey.key_id, pubkey.raw_pub_algorithm)
-            LOG.debug("Outputing Public Key Encrypted Session Key Packet: %s", repr(pesk))
-            outfile.write(bytes(pesk))
-            
-            LOG.debug("Streaming content of %s", f)
-            with open(f, 'rb') as infile:
-                chunk1 = bytearray(args.chunk)
-                chunk2 = bytearray(args.chunk)
-                chunk_size1 = infile.readinto(chunk1)
-                chunk_size2 = infile.readinto(chunk2)
-                partial = (chunk_size2 != 0)
-                literal_packet = LiteralDataPacket()
-                while True:
-                    final = (chunk_size2 == 0) # true if chunk2 is empty
-                    encrypted_data = engine.send( (chunk1, chunk_size1, partial and final) )
-                    if encrypted_data:
-                        outfile.write(encrypted_data)
-                    if final:
-                        break
-                    # Move chunk2 to chunk1, and read into chunk2
-                    chunk1, chunk2 = chunk2, chunk1 # swap names, don't touch memory allocation
-                    chunk_size1 = chunk_size2
-                    chunk_size2 = infile.readinto(chunk2)
-
-        # Now... the checksums
-        LOG.info("Output md5 checksum into %s.md5", prefix)
-        m = hashlib.md5()
-        with open(f, 'rb') as org, open(prefix+'.md5', 'wt') as orgmd5:
-            m.update(org.read())
-            orgmd5.write(m.hexdigest())
-            
-        LOG.info("Output md5 checksum into %s.gpg.md5", prefix)
-        m = hashlib.md5()
-        with open(prefix+'.gpg.md5', 'wt') as orggpgmd5, open(prefix+'.gpg', 'rb') as outfile:
-            m.update(outfile.read())
-            orggpgmd5.write(m.hexdigest())
-
-if __name__ == '__main__':
+def main():
     try:
-        main()
+        run()
     except Exception as e:
-        print('Encryption failed')
-        LOG.error(repr(e))
+        print(f'======== {sys.argv[0]} Error ========')
+        #LOG.error(repr(e))
         print(e, file=sys.stderr)
         sys.exit(2)
+
+if __name__ == '__main__':
+    main()
