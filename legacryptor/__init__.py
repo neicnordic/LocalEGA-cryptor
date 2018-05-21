@@ -4,7 +4,7 @@
 """The legacryptor package contains code to encrypt file using Crypt4GA specification."""
 
 __title__ = 'LocalEGA-Cryptor'
-__version__ = VERSION = '0.1'
+__version__ = VERSION = 2
 __author__ = 'Frédéric Haziza <daz@nbis.se>'
 #__license__ = 'Apache 2.0'
 __copyright__ = __title__ + ' @ NBIS Sweden'

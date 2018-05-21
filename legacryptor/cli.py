@@ -26,14 +26,15 @@ def parse_args(args=None):
     mode.add_argument('-de','--reencrypt', dest='reencrypt', action='store_true', help="Re-Encrypt the given files")
     mode.add_argument('-l', '--list-keys', dest='list_keys', action='store_true', help="List the available public keys and exits")
 
-    # Public keys from PGP key server
+    # Public keys from PGP key server or from keyring
     server = parser.add_argument_group('About the PGP KeyServer')
     server.add_argument('-s', '--server', dest='server',
                         help="Endpoint to query public keys. [Default: https://pgp.nbis.se/get/]",
                         default="https://pgp.nbis.se/get/")
     server.add_argument('-n','--offline', dest='offline',
                         action='store_true',
-                        help="Disable the server queries and load a local pubring")
+                        help="Disable the server queries and load a local pubring",
+                        default=True)
     
     # For Pubring
     recipients = parser.add_argument_group('About the Recipients')
@@ -46,24 +47,28 @@ def parse_args(args=None):
     
     # For Encryption
     encryption = parser.add_argument_group('About the Encryption')
-    encryption.add_argument('-c', '--chunk_size', dest='chunk',
-                            help="Each is read in chunks. This parameter sets the buffer size. [Default: 4096 bytes]",
-                            default=4096) # 1 << 12
+    # encryption.add_argument('-c', '--chunk_size', dest='chunk',
+    #                         help="Each is read in chunks. This parameter sets the buffer size. [Default: 4096 bytes]",
+    #                         default=4096) # 1 << 12
     encryption.add_argument('-o', '--output', dest='output',
-                            help="output directory for the 3 created files",
-                            default='.')
+                            help="output file, containing the Crypt4GA concatenation of the files listed in the command-line argmunents",
+                            default='output.c4ga')
+    # encryption.add_argument('-E', '--extension', dest='extension',
+    #                         help="Filename Extension. [Default: c4ga]",
+    #                         default='c4ga')
 
-    encryption.add_argument('-C', '--checksum', dest='checksum',
-                            help="Checksum algorithm and extension. [Default: sha256]",
-                            default='sha256')
-    encryption.add_argument('-E', '--extension', dest='extension',
-                            help="Filename Extension. [Default: c4ga]",
-                            default='c4ga')
+
+    # # For Integrity / Checksums
+    # integrity = parser.add_argument_group('About the Integrity')
+    # integrity.add_argument('-C', '--checksum', dest='checksum',
+    #                         help="Checksum algorithm and extension. [Default: sha256]",
+    #                         default='sha256')
 
     # Finally... the list of files
-    parser.add_argument('filename', nargs='*', help="The path of the files to decrypt")
+    parser.add_argument('files', nargs='*', help="A list of files to handle")
 
 
+    # ...aaand... cue music
     _args = parser.parse_args()
 
     # Logging

@@ -3,8 +3,7 @@ import logging
 
 from terminaltables import DoubleTable
 
-from .utils import PGPError
-from .packet import parse_next_packet
+from .openpgp import PGPError, parse_next_packet
 
 LOG = logging.getLogger(__name__)
 
