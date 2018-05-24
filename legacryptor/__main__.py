@@ -5,61 +5,95 @@ import sys
 import os
 import logging
 
+import pgpy
+
+from .crypt4gh import encrypt, decrypt, reencrypt
 from .cli import parse_args
 from .pubring import Pubring
-from .encrypt import encrypt_files
-from .decrypt import decrypt_files
-from .reencrypt import reencrypt_files
 
 LOG = logging.getLogger(__name__)
 
-def run():
+def run(args):
 
     # Parse CLI arguments
-    args = parse_args()
+    args = parse_args(args)
 
-    # Create output dir, if necessary
-    if args.output != '.':
-        LOG.info("Creating output directory %s", args.output)
-        os.makedirs(args.output, exist_ok=True)
+    #####################################
+    ## Listing Recipients in the pubring
+    #####################################
+    if args['list']:
 
-    # Loading the pubring
-    ring = Pubring(args.pubring)
+        if args['--server']:
+            endpoint = args['--server'] + "/list"
+            LOG.debug('Contacting %s', endpoint)
+            raise NotImplementedError('Non offline mode not implemented...yet')
+            return 0
+        else:
+            ring = Pubring(args['--pubring'])
+            print(repr(ring))
+            return 0
 
-    # If --list-keys, print and exit
-    if args.list_keys:
-        print(repr(ring))
-        return
+    #####################################
+    ## For Encryption
+    ##################################### 
+    if args['encrypt']:
 
-    # Get recipient
-    if not args.offline:
-        from urllib.parse import quote
-        endpoint = args.server + quote(args.recipient)
-        LOG.debug('Contacting %s', endpoint)
-        pubkey = None
-        raise NotImplementedError('Non offline mode not implemented...yet')
-    else:
-        LOG.debug('Finding key for "%s" in pubring %s', args.recipient, args.pubring)
-        pubkey = ring[args.recipient] # might raise PGPError if not found
-        LOG.info('Public Key (for %s) %s', args.recipient, repr(pubkey))
+        if args['--pk']:
+            pubkey, _ = pgpy.PGPKey.from_file(args['--pk'])
+        else:
+            # Get recipient
+            recipient = args['-r']
+            if args['--server']:
+                from urllib.parse import quote
+                endpoint = args['--server'] % quote(recipient) # handle injections
+                LOG.debug('Contacting %s', endpoint)
+                pubkey = None
+                raise NotImplementedError('Non offline mode not implemented...yet')
+            else:
+                ring = Pubring(args['--pubring'])
+                LOG.debug('Finding key for "%s" in %s', recipient, ring)
+                pubkey = ring[recipient] # might raise PGPError if not found
+                LOG.info('Public Key (for %s) %s', recipient, repr(pubkey))
 
-    # For each file listed on the command line
-    if args.encrypt:
-        encrypt_files(pubkey, args)
-    elif args.decrypt:
-        decrypt_files(privkey, args)
-    elif args.reencrypt:
-        privkey = None # Get it from a keyserver. Similar to lega/openpgg/__main__.py
-        reencrypt_files(privkey, pubkey, args)
+        infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
+        outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
+        return encrypt(infile, outfile, pubkey)
 
-def main():
+    #####################################
+    ## For Encryption
+    ##################################### 
+    if args['decrypt']:
+
+        seckey,_ = pgpy.PGPKey.from_file(args['--sk'])
+        with seckey.unlock(args['--passphrase']) as privkey:
+            infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
+            outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
+            return decrypt(infile, outfile, privkey)
+
+    #####################################
+    ## For ReEncryption
+    #####################################
+    if args['reencrypt']:
+
+        seckey,_ = pgpy.PGPKey.from_file(args['--sk']) # or get it from server
+        with seckey.unlock(args['--passphrase']) as privkey:
+
+            pubkey, _ = pgpy.PGPKey.from_file(args['--pk'])
+            infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
+            outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
+            return reencrypt(infile, outfile, pubkey, privkey)
+
+
+    return 0
+
+def main(args=sys.argv[1:]):
     try:
-        run()
+        return run(args)
+    except KeyboardInterrupt:
+        return 0
     except Exception as e:
-        print(f'======== {sys.argv[0]} Error ========')
-        #LOG.error(repr(e))
         print(e, file=sys.stderr)
-        sys.exit(2)
+        return 1
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main(sys.argv[1:]))

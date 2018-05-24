@@ -1,49 +1,51 @@
+# -*- coding: utf-8 -*-
+
 import os
 import logging
 
 from terminaltables import DoubleTable
-
-from .openpgp import PGPError, parse_next_packet
+from pgpy import PGPKeyring
 
 LOG = logging.getLogger(__name__)
+
+#################################################################
+##
+##           OpenPGP Pubring
+##
+#################################################################
 
 class Pubring():
     def __init__(self, p):
         self._path = p
         pubringpath = os.path.abspath(p)
         LOG.debug("Loading ring %s", pubringpath)
-        self._store = {}
-        with open(pubringpath, 'rb') as stream:
-            pubkey = None
-            while True:
-                packet = parse_next_packet(stream)
-                if packet is None:
-                    break
-                packet.parse(stream)
-                if packet.tag == 6:
-                    pubkey = packet
-                elif packet.tag == 13: # packet 13 must be after a tag 6
-                    LOG.debug('Loading Key "%s" (Key ID %s)', packet.info, pubkey.key_id)
-                    self._store[packet.info] = pubkey # packet.info is a str
-        if not self._store: # empty
+        self._store = PGPKeyring(pubringpath)
+        if not self._store: # empty (len = 0)
             raise ValueError(f'The public ring "{p}" was empty or not found')
 
+    def __iter__(self):
+        for k in self._store:
+            for i in k.userids:
+                yield (k.fingerprint.keyid, i.name, i.email, i.comment)
 
     def __getitem__(self, recipient):
-        for info, key in self._store.items():
-            #LOG.debug('Recipient "%s" | Info "%s"', recipient, info)
-            if recipient == key.key_id or recipient in info:
-                return key
-        # else:
-        raise PGPError(f'No public key found for {recipient}')
+        try:
+            with self._store.key(recipient) as k:
+                return k
+        except:
+            raise PGPError(f'No public key found for {recipient}')
 
     def __bool__(self):
         return len(self._store) > 0
 
+    def __str__(self):
+        return f'<Pubring from {self._path}>'
+
     def __repr__(self):
-        list_data = [ ('Key ID','User Info') ]
-        for name,key in self._store.items():
-            list_data.append( (key.key_id, name) )
+        list_data = [ ('Key ID','User Name','User Email','User Comment') ]
+        for k in self._store:
+            for i in k.userids:
+                list_data.append( (k.fingerprint.keyid, i.name, i.email, i.comment) )
         table = DoubleTable(list_data)
         return f'''\
 Available keys from {self._path}

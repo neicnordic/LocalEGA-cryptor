@@ -1,12 +1,12 @@
 `lega-cryptor` is a tool to encrypt, decrypt or re-encrypt files
-according to the [Crypt4GA standard](add the link).
+according to the [GA4GH cryptographic standard](add the link).
 
 # Installation
 
 ```
 git clone https://github.com/NBISweden/LocalEGA-cryptor
 pip install -r LocalEGA-cryptor/requirements.txt
-pip install -e ./LocalEGA-cryptor/
+pip install -e ./LocalEGA-cryptor
 ```
 
 or
@@ -15,72 +15,62 @@ or
 pip install git+https://github.com/NBISweden/LocalEGA-cryptor.git
 ```
 
-
 # Usage
 
 The usual `-h` flag shows you the different options that the tool accepts.
 
 ```bash
 $ lega-cryptor -h
-usage: lega-cryptor [-h] [--log LOG] [-v] (-e | -d | -de | -l) [-s SERVER]
-                    [-n] [-p PUBRING] [-r RECIPIENT] [-c CHUNK] [-o OUTPUT]
-                    [-C CHECKSUM] [-E EXTENSION]
-                    [filename [filename ...]]
+LocalEGA utilities for the cryptographic GA4GH standard.
 
-Encrypt, Decrypt or Re-Encrypt files using the Crypt4GA standard.
+Usage:
+   lega-cryptor [-hv] [--log <file>] list [-s <URL> | -p <path>]
+   lega-cryptor [-hv] [--log <file>] encrypt [-r <recipient>] -s <URL> [-i <input>] [-o <output>]
+   lega-cryptor [-hv] [--log <file>] encrypt [-r <recipient>] [-p <path>] [-i <input>] [-o <output>]
+   lega-cryptor [-hv] [--log <file>] encrypt --pk <path> [-i <input>] [-o <output>]
+   lega-cryptor [-hv] [--log <file>] decrypt --sk <path> --passphrase <secret> [-i <input>] [-o <output>]
+   lega-cryptor [-hv] [--log <file>] reencrypt --sk <path> --passphrase <secret> --pk <path> [-i <input>] [-o <output>]
+   lega-cryptor [-hv] [--log <file>] reencrypt --server <url> --keyid <secret> [-i <input>] [-o <output>]
 
-positional arguments:
-  filename              The path of the files to decrypt
+Options:
+   -h, --help             Prints this help and exit
+   -v, --version          Prints the version and exits
+   --log <file>           Path to the logger file (in YML format)
+   -s <URL>, --server <URL>     
+                          Lists information about all keys in the keyserver
+   -p <file>, --pubring <file>  
+                          Lists information about all keys in the pubring.
+                          If not specified, a default pubring is used either from the
+                          LEGA_PUBRING environment variable (if it exists) or as the one
+                          suppied within this package.
+   -r RECIPIENT           Encrypt for the given recipient [default: ega@crg.eu]
+   --pk <keyfile>         Public PGP key to be used for encryption
+   --sk <keyfile>         Private PGP key to be used for decryption
+   --passphrase <secret>  Secret passphrase to unlock the private key, supplied via -k
+   --keyid <id>           Key ID used to retrieve the key material from the keyserver
+   -i <file>, --input <file>
+                          Input file. If not specified, it uses stdin
+   -o <file>, --output <file>
+                          Output file.  If not specified, it uses stdout
 
-optional arguments:
-  -h, --help            show this help message and exit
-  --log LOG             The logger configuration file
-  -v, --version         show program's version number and exit
-  -e, --encrypt         Encrypt the given files
-  -d, --decrypt         Decrypt the given files
-  -de, --reencrypt      Re-Encrypt the given files
-  -l, --list-keys       List the available public keys and exits
-
-About the PGP KeyServer:
-  -s SERVER, --server SERVER
-                        Endpoint to query public keys. [Default:
-                        https://pgp.nbis.se/get/]
-  -n, --offline         Disable the server queries and load a local pubring
-
-About the Recipients:
-  -p PUBRING, --pubring PUBRING
-                        Path to the public key ring. If unspecified, it uses
-                        the one supplied with this package.
-  -r RECIPIENT, --recipient RECIPIENT
-                        Name, email or anything to find the recipient of the
-                        message in the adjacent keyring. If unspecified, it
-                        defaults to CRG.
-
-About the Encryption:
-  -c CHUNK, --chunk_size CHUNK
-                        Each is read in chunks. This parameter sets the buffer
-                        size. [Default: 4096 bytes]
-  -o OUTPUT, --output OUTPUT
-                        output directory for the 3 created files
-  -C CHECKSUM, --checksum CHECKSUM
-                        Checksum algorithm and extension. [Default: sha256]
-  -E EXTENSION, --extension EXTENSION
-                        Filename Extension. [Default: c4ga]
+Environment variables:
+   LEGA_LOG       If defined, it will be used as the default logger
+   LEGA_PUBRING   If defined, it will be used as the default pubring
 ```
 
 # Finding which public key to use
 
 ```bash
-$ lega-cryptor -l
+$ lega-cryptor list
 Available keys from [path redacted]/legacryptor/pubring.bin
-╔══════════════════╦═══════════════════════════════════════════════════════════════════════════════╗
-║ Key ID           ║ User Info                                                                     ║
-╠══════════════════╬═══════════════════════════════════════════════════════════════════════════════╣
-║ 783A1FDBD9899BBA ║ EGA Sweden (@NBIS) <ega@nbis.se>                                              ║
-║ F57E35FE22290D3A ║ EGA Finland (@CSC) <ega@csc.fi>                                               ║
-║ 3D214775952B5529 ║ EGA_Public_key (Public key protected with a passphrase) <ega-admin@ebi.ac.uk> ║
-║ 6148E9185EB5F733 ║ EGA CRG (@CRG) <ega@crg.eu>                                                   ║
-╚══════════════════╩═══════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════╦════════════════╦═════════════════════╦════════════════════════════════════════╗
+║ Key ID           ║ User Name      ║ User Email          ║ User Comment                           ║
+╠══════════════════╬════════════════╬═════════════════════╬════════════════════════════════════════╣
+║ 783A1FDBD9899BBA ║ EGA Sweden     ║ ega@nbis.se         ║ @NBIS                                  ║
+║ F57E35FE22290D3A ║ EGA Finland    ║ ega@csc.fi          ║ @CSC                                   ║
+║ 3D214775952B5529 ║ EGA_Public_key ║ ega-admin@ebi.ac.uk ║ Public key protected with a passphrase ║
+║ 6148E9185EB5F733 ║ EGA CRG        ║ ega@crg.eu          ║ @CRG                                   ║
+╚══════════════════╩════════════════╩═════════════════════╩════════════════════════════════════════╝
 The first substring that matches the requested recipient will be used as the encryption key
 Alternatively, you can use the KeyID itself
 ```
@@ -90,23 +80,15 @@ Alternatively, you can use the KeyID itself
 
 # Examples
 
-If you want to encrypt a file (or a list of files), say, for the Swedish Local EGA instance:
+If you want to encrypt a file, say, for the Swedish Local EGA instance:
 
 
 ```bash
-$ lega-cryptor -e -r Sweden -n -o ~/output/directory <file-to-encrypt1> <file-to-encrypt2> ...
+$ lega-cryptor encrypt -r Sweden < inputfile > outputfile
 ```
 
-The `-n` makes you use the package-supplied keyring. It is useful if you don't have access to internet.
-
-Equivalently, you could use:
-
+or equivalently,
 ```bash
-$ lega-cryptor -e -r nbis.se -n -o ~/output/directory <file-to-encrypt1> <file-to-encrypt2> ...
-```
-
-or
-
-```bash
-$ lega-cryptor -e -r 783A1FDBD9899BBA -n -o ~/output/directory <file-to-encrypt1> <file-to-encrypt2> ...
+$ lega-cryptor encrypt -r nbis.se < inputfile > outputfile
+$ lega-cryptor encrypt -r 783A1FDBD9899BBA < inputfile > outputfile
 ```
