@@ -46,7 +46,6 @@ Options:
    -r RECIPIENT           Encrypt for the given recipient [default: ega@crg.eu]
    --pk <keyfile>         Public PGP key to be used for encryption
    --sk <keyfile>         Private PGP key to be used for decryption
-   --passphrase <secret>  Secret passphrase to unlock the private key, supplied via -k
    --keyid <id>           Key ID used to retrieve the key material from the keyserver
    -i <file>, --input <file>
                           Input file. If not specified, it uses stdin
@@ -91,4 +90,5 @@ or equivalently,
 ```bash
 $ lega-cryptor encrypt -r nbis.se < inputfile > outputfile
 $ lega-cryptor encrypt -r 783A1FDBD9899BBA < inputfile > outputfile
+$ lega-cryptor encrypt -r Sweden -i inputfile -o outputfile
 ```

@@ -20,8 +20,8 @@ Usage:
    {PROG} [-hv] [--log <file>] encrypt [-r <recipient>] -s <URL> [-i <input>] [-o <output>]
    {PROG} [-hv] [--log <file>] encrypt [-r <recipient>] [-p <path>] [-i <input>] [-o <output>]
    {PROG} [-hv] [--log <file>] encrypt --pk <path> [-i <input>] [-o <output>]
-   {PROG} [-hv] [--log <file>] decrypt --sk <path> --passphrase <secret> [-i <input>] [-o <output>]
-   {PROG} [-hv] [--log <file>] reencrypt --sk <path> --passphrase <secret> --pk <path> [-i <input>] [-o <output>]
+   {PROG} [-hv] [--log <file>] decrypt --sk <path> [-i <input>] [-o <output>]
+   {PROG} [-hv] [--log <file>] reencrypt --sk <path> --pk <path> [-i <input>] [-o <output>]
    {PROG} [-hv] [--log <file>] reencrypt --server <url> --keyid <secret> [-i <input>] [-o <output>]
 
 Options:
@@ -38,7 +38,6 @@ Options:
    -r RECIPIENT           Encrypt for the given recipient [default: ega@crg.eu]
    --pk <keyfile>         Public PGP key to be used for encryption
    --sk <keyfile>         Private PGP key to be used for decryption
-   --passphrase <secret>  Secret passphrase to unlock the private key, supplied via -k
    --keyid <id>           Key ID used to retrieve the key material from the keyserver
    -i <file>, --input <file>
                           Input file. If not specified, it uses stdin

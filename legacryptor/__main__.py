@@ -65,7 +65,11 @@ def run(args):
     if args['decrypt']:
 
         seckey,_ = pgpy.PGPKey.from_file(args['--sk'])
-        with seckey.unlock(args['--passphrase']) as privkey:
+        
+        from getpass import getpass
+        passphrase = getpass(prompt=f'Passphrase for {args["--sk"]}: ')
+
+        with seckey.unlock(passphrase) as privkey:
             infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
             outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
             return decrypt(infile, outfile, privkey)
