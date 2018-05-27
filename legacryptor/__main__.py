@@ -80,13 +80,25 @@ def run(args):
     #####################################
     if args['reencrypt']:
 
-        seckey,_ = pgpy.PGPKey.from_file(args['--sk']) # or get it from server
-        with seckey.unlock(args['--passphrase']) as privkey:
-
-            pubkey, _ = pgpy.PGPKey.from_file(args['--pk'])
-            infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
-            outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
-            return reencrypt(infile, outfile, pubkey, privkey)
+        url = args['--server']
+        if url:
+            try:
+                # Prepare to contact the Keyserver for the Master key
+                with urlopen(url) as response:
+                    return json.loads(response.read().decode())
+            except Exception as e:
+                LOG.error(repr(e))
+                LOG.critical('Problem contacting the Keyserver. Ingestion Worker terminated')
+                return 1
+        else:
+            seckey,_ = pgpy.PGPKey.from_file(args['--sk']) # or get it from server
+            from getpass import getpass
+            passphrase = getpass(prompt=f'Passphrase for {args["--sk"]}: ')
+            with seckey.unlock(passphrase) as privkey:
+                pubkey, _ = pgpy.PGPKey.from_file(args['--pk'])
+                infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
+                outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
+                return reencrypt(infile, outfile, pubkey, privkey)
 
 
     return 0

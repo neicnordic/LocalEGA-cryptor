@@ -283,5 +283,41 @@ def decrypt(infile, outfile, privkey, chunk_size=4096):
 
 
 def reencrypt(infile, outfile, pubkey, privkey, chunk_size=4096):
+    '''Extract header and update with another one
+    The AES encrypted part is only copied'''
     assert privkey.is_unlocked, "The private key should be unlocked"
-    raise NotImplementedError('Coming...')
+    assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
+
+    try:
+        LOG.info(f'Deconstructing the Header')
+        magic_number = infile.read(8)
+        if magic_number != MAGIC_NUMBER:
+            raise ValueError("Not a CRYPT4GH formatted file")
+
+        version = int.from_bytes(infile.read(4), byteorder='little')
+        if version != __version__:
+            raise ValueError("Invalid CRYPT4GH version")
+
+        length = int.from_bytes(infile.read(4), byteorder='little') - 16
+        encrypted_part = infile.read(length)
+        header = Header.decrypt(encrypted_part, privkey)
+        header_bytes = header.encrypt(pubkey)
+        outfile.write(header_bytes)
+
+        LOG.info(f'Streaming the remainer of the file')
+        while True:
+            data = infile.read(chunk_size)
+            if not data:
+                break
+            outfile.write(data)
+
+    finally:
+        infileno = infile.fileno()
+        if infileno != 0:
+            LOG.info('Closing input file (fileno %d)', infileno)
+            infile.close()
+        outfileno = outfile.fileno()
+        if outfileno != 1:
+            LOG.info('Closing output file (fileno %d)', outfileno)
+            outfile.close()
+    LOG.info('Reencryption Successful')
