@@ -56,11 +56,12 @@ def run(args):
                 LOG.info('Public Key (for %s) %s', recipient, repr(pubkey))
 
         infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
+        infilesize = os.path.getsize(args['--input']) if args['--input'] else None
         outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
-        return encrypt(infile, outfile, pubkey)
+        return encrypt(infile, infilesize, outfile, pubkey)
 
     #####################################
-    ## For Encryption
+    ## For Decryption
     ##################################### 
     if args['decrypt']:
 

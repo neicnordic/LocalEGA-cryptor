@@ -45,8 +45,7 @@ The encrypted part is:
 # I'm not sure they are any useful.
 
 class Record():
-    def __init__(self, session_key, iv,
-                 plaintext_start=b'\x00000000', plaintext_end= b'\xffffffff', ciphertext_start=b'\x00000000', counter_offset=b'\x00000000', method=b'\x00000000'):
+    def __init__(self, session_key, iv, plaintext_start=0, plaintext_end=0xFFFFFFFFFFFFFFFF, ciphertext_start=32, counter_offset=0, method=0):
         self.plaintext_start = plaintext_start
         self.plaintext_end = plaintext_end
         self.ciphertext_start = ciphertext_start
@@ -55,26 +54,39 @@ class Record():
         self.session_key = session_key
         self.iv = iv
 
+    def __str__(self):
+        return f'<Record {self.plaintext_start}|{self.plaintext_end}|{self.ciphertext_start}|{self.counter_offset}|{self.method}>'
 
     def __bytes__(self):
         return (
-            self.plaintext_start  +  # 4 bytes
-            self.plaintext_end    +  # 4 bytes
-            self.ciphertext_start +  # 4 bytes
-            self.counter_offset   +  # 4 bytes
-            self.method           +  # 4 bytes
-            self.session_key      +  # 32 bytes
-            self.iv                  # IV (16 big-endian bytes)
+            self.plaintext_start.to_bytes(8,'little')  +  # 8 bytes
+            self.plaintext_end.to_bytes(8,'little')    +  # 8 bytes
+            self.ciphertext_start.to_bytes(8,'little') +  # 8 bytes
+            self.counter_offset.to_bytes(8,'little')   +  # 8 bytes
+            self.method.to_bytes(4,'little')           +  # 4 bytes
+            self.session_key                           +  # 32 bytes
+            self.iv                                       # IV (16 big-endian bytes)
         )
 
     @classmethod
     def new(cls, stream):
-        return cls(stream[20:52], stream[52:],
-                   plaintext_start = stream[:4],
-                   plaintext_end = stream[4:8],
-                   ciphertext_start = stream[8:12],
-                   counter_offset = stream[12:16],
-                   method = stream[16:20])
+        plaintext_start = int.from_bytes(stream[:8],'little')
+        del stream[:8]
+        plaintext_end = int.from_bytes(stream[:8],'little')
+        del stream[:8]
+        ciphertext_start = int.from_bytes(stream[:8],'little')
+        del stream[:8]
+        counter_offset = int.from_bytes(stream[:8],'little')
+        del stream[:8]
+        method = int.from_bytes(stream[:4],'little')
+        del stream[:4]
+        session_key = bytes(stream[:32])
+        del stream[:32]
+        iv = bytes(stream[:16])
+        del stream[:16]
+        obj = cls(session_key, iv,
+                  plaintext_start, plaintext_end, ciphertext_start, counter_offset, method)
+        return obj
 
 class Header():
     def __init__(self):
@@ -84,13 +96,13 @@ class Header():
         # Encrypted part
         self.records = []
 
-    def encrypt(self, pubkey): # No need to call it too often
+    def encrypt(self, pubkey):
         if not self.records:
             print("Warning: no records", file=sys.stderr)
         n = len(self.records).to_bytes(4, byteorder='little')
-        records =  b''.join(bytes(r) for r in self.records)
-        data = bytes(pubkey.encrypt(pgpy.PGPMessage.new(n + records, sensitive=True, format='b')))
-
+        records = n + b''.join(bytes(r) for r in self.records)
+        msg = pgpy.PGPMessage.new(records, sensitive=True, format='b') # file=False
+        data = bytes(pubkey.encrypt(msg))
         return (self.magic_number                                + # 8 bytes
                 self.version.to_bytes(4, byteorder='little')     + # 4 bytes
                 (16 + len(data)).to_bytes(4, byteorder='little') + # 4 bytes
@@ -103,17 +115,16 @@ class Header():
         self.records.append(r)
 
     @classmethod
-    def new(cls, data, seckey):
-        obj = cls()
-        _data = seckey.decrypt(pgpy.PGPMessage.from_blob(data))
-        data = bytes(_data)
-        LOG.debug(data.hex().upper())
+    def decrypt(cls, data, seckey):
+        msg = pgpy.PGPMessage.from_blob(data)
+        data = bytearray(seckey.decrypt(msg).message)
         n = int.from_bytes(data[:4], byteorder='little')
+        del data[:4]
         LOG.debug(f'{n} records found')
-        obj.records = [Record.new(data[i*68: (i+1)*68]) for i in range(0,n)]
-        LOG.debug(f'Records: {obj.records}')
-        obj.magic_number = MAGIC_NUMBER
-        obj.version = __version__
+        obj = cls()
+        for i in range(0,n):
+            r = Record.new(data)
+            obj.records.append(r)
         return obj
 
 
@@ -143,53 +154,43 @@ def cryptor(session_key, nonce, method=None):
         raise ValueError(f'Cipher incorrectly initialized: {method}')
     aes = aes_func()
 
-    inputchecksum = hashlib.sha256()
-    outputchecksum = hashlib.sha256()
-
     chunk = yield
     while True:
         data = bytes(aes.update(chunk))
-        inputchecksum.update(chunk)
-        outputchecksum.update(data)
         chunk = yield data
         if chunk is None: # Final chunk. Expunging.
-            final_data = aes.finalize()
-            outputchecksum.update(final_data)
-            yield final_data
-            # Returning the checksums
-            yield (inputchecksum.digest(), outputchecksum.digest())
+            yield aes.finalize()
             break # Not really needed, since we won't advance the generator anymore
 
 
-def encrypt(infile, outfile, pubkey, chunk_size=4096):
+def encrypt(infile, infilesize, outfile, pubkey, chunk_size=4096):
 
     try:
         LOG.info('Loading an encryption engine')
 
         session_key = os.urandom(32) # for AES-256
-        LOG.debug(f'session key: {session_key.hex().upper()}')
+        # LOG.debug(f'session key: {session_key.hex().upper()}')
         nonce = os.urandom(16)
-        LOG.debug(f'  CTR nonce: {nonce.hex().upper()}')
+        # LOG.debug(f'  CTR nonce: {nonce.hex().upper()}')
 
         LOG.info('Creating Crypt4GH header')
         header = Header()
         LOG.debug('Adding a record')
-        header.add_record(Record(session_key, nonce))
+        header.add_record(Record(session_key, nonce, plaintext_end=infilesize or 0xFFFFFFFFFFFFFFFF))
         header_bytes = header.encrypt(pubkey)
         outfile.write(header_bytes)
 
-        # text = header_bytes.hex().upper()
-        # text = ' '.join(text[i: i+2] for i in range(0, len(text), 2))
-        # LOG.debug(f'HEADER: {text}')
-
-        LOG.debug('Make room for the 2 SHA256 checksums')
-        outfile.write(b'0' * 64)
+        LOG.debug('Make room for the SHA256 MDC')
+        outfile.write((0).to_bytes(32, byteorder='big'))
 
         LOG.debug("Streaming content")
+        mdc = hashlib.sha256()
         engine = cryptor(session_key, nonce, method='encryptor')
         next(engine)
+
         chunk1 = infile.read(chunk_size)
         while True:
+            mdc.update(chunk1)
             encrypted_data = engine.send(chunk1)
             outfile.write(encrypted_data)
             chunk2 = infile.read(chunk_size)
@@ -199,13 +200,10 @@ def encrypt(infile, outfile, pubkey, chunk_size=4096):
                 break
             chunk1 = chunk2 # Move chunk2 to chunk1, and let it read a new chunk2
 
-        LOG.info('Outputing the checksums')
-        mdc, checksum_header = next(engine)
-        LOG.debug(f'  Encrypted SHA256 Checksum: {checksum_header.hex().upper()}', )
-        LOG.debug(f'UnEncrypted SHA256 Checksum: {mdc.hex().upper()}')
+        LOG.info('Rewinding for the MDC')
         outfile.seek(len(header_bytes), io.SEEK_SET) # from start
-        outfile.write(mdc)
-        outfile.write(checksum_header)
+        LOG.debug(f'MDC: {mdc.hexdigest().upper()}')
+        outfile.write(mdc.digest())
 
     finally:
         infileno = infile.fileno()
@@ -220,7 +218,7 @@ def encrypt(infile, outfile, pubkey, chunk_size=4096):
 
 def decrypt(infile, outfile, privkey, chunk_size=4096):
     assert privkey.is_unlocked, "The private key should be unlocked"
-    #assert chunk_size >= 64, "Chunk size larger than 64 bytes required"
+    assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
     try:
         LOG.info(f'Deconstructing the Header')
@@ -233,54 +231,44 @@ def decrypt(infile, outfile, privkey, chunk_size=4096):
             raise ValueError("Invalid CRYPT4GH version")
 
         length = int.from_bytes(infile.read(4), byteorder='little') - 16
-        encrypted_header = infile.read(length)
-
-        LOG.info(f'Getting the checksums')
-        mdc = infile.read(32)
-        checksum = infile.read(32)
-        LOG.info('Verifying the checksums length')
-        if len(checksum) != 32:
-            raise ValueError("Checksum missing")
-        if len(mdc) != 32:
-            raise ValueError("MDC missing")
-
-        LOG.info('Parsing the encrypted part of the header')
-        header = Header.new(encrypted_header, privkey)
-        # Only interested in the first record
+        encrypted_part = infile.read(length)
+        header = Header.decrypt(encrypted_part, privkey)
+        # Only interested in the first record, for the moment
         r = header.records[0]
 
-        LOG.debug(f'session key: {r.session_key.hex().upper()}')
-        LOG.debug(f'  CTR nonce: {r.nonce.hex().upper()}')
+        # LOG.debug(f'session key: {r.session_key.hex().upper()}')
+        # LOG.debug(f'  CTR nonce: {r.iv.hex().upper()}')
+
+        LOG.debug("Shifting to right cipher position")
+        orgmdc = infile.read(32)
+        r.ciphertext_start -= 32
+        infile.seek(r.ciphertext_start,io.SEEK_CUR)
 
         LOG.debug("Streaming content")
-        engine = cryptor(r.session_key, r.nonce, method='decryptor')
+        mdc = hashlib.sha256()
+        engine = cryptor(r.session_key, r.iv, method='decryptor')
         next(engine)
 
-        LOG.debug("Streaming content")
-        engine = cryptor(session_key, nonce, method='encryptor')
-        next(engine)
         chunk1 = infile.read(chunk_size)
         while True:
-            encrypted_data = engine.send(chunk1)
-            outfile.write(encrypted_data)
+            data = engine.send(chunk1)
+            mdc.update(data)
+            outfile.write(data)
             chunk2 = infile.read(chunk_size)
             if not chunk2: # Finally, if chunk2 is empty
                 final_data = engine.send(None)
+                mdc.update(final_data)
                 outfile.write(final_data)
                 break
             chunk1 = chunk2 # Move chunk2 to chunk1, and let it read a new chunk2
 
-        LOG.info('Outputing the checksums')
-        _checksum, _mdc = next(engine)
-        LOG.debug(f'  Encrypted SHA256 Checksum: {_checksum.hex().upper()}', )
-        LOG.debug(f'UnEncrypted SHA256 Checksum: {_mdc.hex().upper()}')
-
-        LOG.info('Verifying the checksum')
-        if checksum != _checksum:
-            raise ValueError("Invalid checksum for the encrypted content")
-        if mdc != _mdc:
-            raise ValueError("Invalid checksum for the original content")
-        
+        # Checking MDC
+        LOG.debug(f'Computed MDC: {mdc.hexdigest().upper()}')
+        LOG.debug(f'Original MDC: {orgmdc.hex().upper()}')
+        if orgmdc != mdc.digest():
+            # Should we erase the file?
+            # Should we instead write the output to tempfile and then move it if successful?
+            raise ValueError("Invalid MDC")
 
     finally:
         infileno = infile.fileno()
