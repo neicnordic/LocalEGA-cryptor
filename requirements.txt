@@ -1,5 +1,5 @@
 pyYaml
-cryptography==2.1.4
+cryptography
 terminaltables
 pgpy
 docopt

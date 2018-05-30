@@ -20,7 +20,7 @@ setup(name='legacryptor',
       },
       platforms = 'any',
       install_requires=[
-          'cryptography==2.1.4',
+          'cryptography',
           'pyYaml',
           'terminaltables',
           'pgpy',
