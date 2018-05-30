@@ -162,7 +162,6 @@ def cryptor(session_key, nonce, method=None):
             yield aes.finalize()
             break # Not really needed, since we won't advance the generator anymore
 
-
 def encrypt(infile, infilesize, outfile, pubkey, chunk_size=4096):
 
     try:
@@ -216,22 +215,27 @@ def encrypt(infile, infilesize, outfile, pubkey, chunk_size=4096):
             outfile.close()
     LOG.info('Encryption Successful')
 
+def get_header(infile):
+    '''Extract header and advance file position to AES block.'''
+
+    LOG.info(f'Deconstructing the Header')
+    magic_number = infile.read(8)
+    if magic_number != MAGIC_NUMBER:
+        raise ValueError("Not a CRYPT4GH formatted file")
+
+    version = int.from_bytes(infile.read(4), byteorder='little')
+    if version != __version__:
+        raise ValueError("Invalid CRYPT4GH version")
+
+    length = int.from_bytes(infile.read(4), byteorder='little') - 16
+    return infile.read(length)
+
 def decrypt(infile, outfile, privkey, chunk_size=4096):
     assert privkey.is_unlocked, "The private key should be unlocked"
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
     try:
-        LOG.info(f'Deconstructing the Header')
-        magic_number = infile.read(8)
-        if magic_number != MAGIC_NUMBER:
-            raise ValueError("Not a CRYPT4GH formatted file")
-
-        version = int.from_bytes(infile.read(4), byteorder='little')
-        if version != __version__:
-            raise ValueError("Invalid CRYPT4GH version")
-
-        length = int.from_bytes(infile.read(4), byteorder='little') - 16
-        encrypted_part = infile.read(length)
+        encrypted_part = get_header(infile)
         header = Header.decrypt(encrypted_part, privkey)
         # Only interested in the first record, for the moment
         r = header.records[0]
@@ -289,17 +293,7 @@ def reencrypt(infile, outfile, pubkey, privkey, chunk_size=4096):
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
     try:
-        LOG.info(f'Deconstructing the Header')
-        magic_number = infile.read(8)
-        if magic_number != MAGIC_NUMBER:
-            raise ValueError("Not a CRYPT4GH formatted file")
-
-        version = int.from_bytes(infile.read(4), byteorder='little')
-        if version != __version__:
-            raise ValueError("Invalid CRYPT4GH version")
-
-        length = int.from_bytes(infile.read(4), byteorder='little') - 16
-        encrypted_part = infile.read(length)
+        encrypted_part = get_header(infile)
         header = Header.decrypt(encrypted_part, privkey)
         header_bytes = header.encrypt(pubkey)
         outfile.write(header_bytes)
@@ -321,3 +315,4 @@ def reencrypt(infile, outfile, pubkey, privkey, chunk_size=4096):
             LOG.info('Closing output file (fileno %d)', outfileno)
             outfile.close()
     LOG.info('Reencryption Successful')
+

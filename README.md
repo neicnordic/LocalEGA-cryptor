@@ -28,17 +28,17 @@ Usage:
    lega-cryptor [-hv] [--log <file>] encrypt [-r <recipient>] -s <URL> [-i <input>] [-o <output>]
    lega-cryptor [-hv] [--log <file>] encrypt [-r <recipient>] [-p <path>] [-i <input>] [-o <output>]
    lega-cryptor [-hv] [--log <file>] encrypt --pk <path> [-i <input>] [-o <output>]
-   lega-cryptor [-hv] [--log <file>] decrypt --sk <path> --passphrase <secret> [-i <input>] [-o <output>]
-   lega-cryptor [-hv] [--log <file>] reencrypt --sk <path> --passphrase <secret> --pk <path> [-i <input>] [-o <output>]
+   lega-cryptor [-hv] [--log <file>] decrypt --sk <path> [-i <input>] [-o <output>]
+   lega-cryptor [-hv] [--log <file>] reencrypt --sk <path> --pk <path> [-i <input>] [-o <output>]
    lega-cryptor [-hv] [--log <file>] reencrypt --server <url> --keyid <secret> [-i <input>] [-o <output>]
 
 Options:
    -h, --help             Prints this help and exit
    -v, --version          Prints the version and exits
    --log <file>           Path to the logger file (in YML format)
-   -s <URL>, --server <URL>     
+   -s <URL>, --server <URL>
                           Lists information about all keys in the keyserver
-   -p <file>, --pubring <file>  
+   -p <file>, --pubring <file>
                           Lists information about all keys in the pubring.
                           If not specified, a default pubring is used either from the
                           LEGA_PUBRING environment variable (if it exists) or as the one
