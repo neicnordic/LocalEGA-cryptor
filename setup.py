@@ -1,21 +1,17 @@
 from setuptools import setup
-from legacryptor import __version__, __author__
+from legacryptor import __version__, __author__, __title__, __doc__ as lega_doc, __license__
 
 setup(name='legacryptor',
       version=__version__,
       url='http://nbisweden.github.io/LocalEGA-cryptor',
-      license='Apache License 2.0',
+      license=__license__,
       author=__author__,
       author_email='ega@nbis.se',
-      description='Local EGA Cryptor',
-      long_description='''\
-LocalEGA Cryptor encrypts file using the OpenPGP protocol and some given public keys.
-
-PGP Public keys are contained in the adjacent pubring.pgp file.
-''',
+      description=__title__,
+      long_description=lega_doc,
       packages=['legacryptor'],
       include_package_data=False,
-      package_data={ 'legacryptor': ['pubring.bin'] },
+      package_data={ 'legacryptor': ['pubring.bin','completion.bash'] },
       zip_safe=False,
       entry_points={
           'console_scripts': [
@@ -23,10 +19,11 @@ PGP Public keys are contained in the adjacent pubring.pgp file.
           ]
       },
       platforms = 'any',
-      # install_requires=[
-      #     'cryptography==2.1.4',
-      #     'sphinx_rtd_theme',
-      #     'terminaltables',
-      # ],
-)
-          
+      install_requires=[
+          'cryptography',
+          'pyYaml',
+          'terminaltables',
+          'pgpy',
+          'docopt',
+      ],
+)          
