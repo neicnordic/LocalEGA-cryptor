@@ -92,3 +92,17 @@ $ lega-cryptor encrypt -r nbis.se < inputfile > outputfile
 $ lega-cryptor encrypt -r 783A1FDBD9899BBA < inputfile > outputfile
 $ lega-cryptor encrypt -r Sweden -i inputfile -o outputfile
 ```
+# File Format
+
+Refer to the [following slide](https://docs.google.com/presentation/d/1Jg0cUCLBO7ctyIWiyTmxb5Il_fQVzKzrxHHzR0K9ZvU/edit#slide=id.g3b7e5ab607_0_2?usp=sharing)
+
+# Demonstration
+
+Here is a demo of the tool using the following scenario: We have pre-created 2 keypairs, namely `test.pub / test.sec` and `test2.pub / test2.sec`, and we run the steps:
+
+1. Encryption with a first public key, here `test.pub`
+2. Decryption with the relevant private key (Here the `test.sec`, where the passphrase is given at a no-echo prompt, to unlock it)
+3. Re-encryption with a second public key (Here `test2.pub` and the private key `test.sec` from 2)
+4. Decryption using the second private key `test2.sec` (along with the no-echo prompted passphrase to unlock it).
+
+[![asciicast](https://asciinema.org/a/ypkjaoDgQOGg2pILdFI4JlFGg.png)](https://asciinema.org/a/ypkjaoDgQOGg2pILdFI4JlFGg)
