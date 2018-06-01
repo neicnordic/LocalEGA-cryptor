@@ -14,12 +14,20 @@ LOG = logging.getLogger(__name__)
 ##
 #################################################################
 
+# Patching the PGPy code
+# See: https://github.com/SecurityInnovation/PGPy/issues/240
+class LegaKeyring(PGPKeyring):
+    def __iter__(self):
+        for pgpkey in self._keys.values():
+            yield pgpkey
+
+
 class Pubring():
     def __init__(self, p):
         self._path = p
         pubringpath = os.path.abspath(p)
         LOG.debug("Loading ring %s", pubringpath)
-        self._store = PGPKeyring(pubringpath)
+        self._store = LegaKeyring(pubringpath)
         if not self._store: # empty (len = 0)
             raise ValueError(f'The public ring "{p}" was empty or not found')
 
