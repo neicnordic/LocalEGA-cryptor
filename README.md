@@ -42,7 +42,7 @@ Options:
                           Lists information about all keys in the pubring.
                           If not specified, a default pubring is used either from the
                           LEGA_PUBRING environment variable (if it exists) or as the one
-                          suppied within this package.
+                          supplied within this package.
    -r RECIPIENT           Encrypt for the given recipient [default: ega@crg.eu]
    --pk <keyfile>         Public PGP key to be used for encryption
    --sk <keyfile>         Private PGP key to be used for decryption
