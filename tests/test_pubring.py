@@ -21,13 +21,13 @@ class TestPubring(unittest.TestCase):
         self._dir.cleanup_all()
 
     @tempdir()
-    def test_error_setup(self, dir):
+    def test_error_setup(self, filedir):
         """Setting up should give an error due to unkown path."""
-        path = dir.write('pubring.bin', ''.encode('utf-8'))
-        # the ValueError is raised by PGPy because unproper armored PGP 
+        path = filedir.write('pubring.bin', ''.encode('utf-8'))
+        # the ValueError is raised by PGPy because unproper armored PGP
         with self.assertRaises(ValueError):
             Pubring(path)
-        dir.cleanup()
+        filedir.cleanup()
 
     def test_load_key(self):
         """Getitem, should return the key."""
