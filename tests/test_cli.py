@@ -7,7 +7,6 @@ from pgpy.errors import PGPError
 from . import logger_data, gpg_data
 from testfixtures import TempDirectory, tempdir
 from unittest import mock
-from getpass import getpass
 
 
 class TestCommandLineARGS(unittest.TestCase):

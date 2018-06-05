@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/NBISweden/LocalEGA-cryptor.svg?branch=master)](https://travis-ci.org/NBISweden/LocalEGA-cryptor)
+[![Coverage Status](https://coveralls.io/repos/github/NBISweden/LocalEGA--cryptor/badge.svg?branch=master)](https://coveralls.io/github/NBISweden/LocalEGA-cryptor?branch=master)
+
 `lega-cryptor` is a tool to encrypt, decrypt or re-encrypt files
 according to the [GA4GH cryptographic standard](add the link).
 
