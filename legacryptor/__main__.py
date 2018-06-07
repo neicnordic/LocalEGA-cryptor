@@ -71,9 +71,18 @@ def run(args):
         passphrase = getpass(prompt=f'Passphrase for {args["--sk"]}: ')
 
         with seckey.unlock(passphrase) as privkey:
-            infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
-            outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
-            return decrypt(privkey, infile, outfile)
+            inputfilename = args['--input']
+            outputfilename = args['--output']
+            infile = open(inputfilename, 'rb') if inputfilename else sys.stdin.buffer
+            outfile = open(outputfilename, 'wb') if outputfilename else sys.stdout.buffer
+            def process_output(data):
+                print('Processing', data.decode())
+                outfile.write(data)
+            decrypt(privkey, infile, process_output=process_output)
+            if inputfilename:
+                infile.close()
+            if outputfilename:
+                outfile.close()
 
     #####################################
     ## For ReEncryption
@@ -96,10 +105,17 @@ def run(args):
             passphrase = getpass(prompt=f'Passphrase for {args["--sk"]}: ')
             with seckey.unlock(passphrase) as privkey:
                 pubkey, _ = pgpy.PGPKey.from_file(args['--pk'])
-                infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
-                outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
-                return reencrypt(pubkey, privkey, infile, outfile)
-
+                inputfilename = args['--input']
+                outputfilename = args['--output']
+                infile = open(inputfilename, 'rb') if inputfilename else sys.stdin.buffer
+                outfile = open(outputfilename, 'wb') if outputfilename else sys.stdout.buffer
+                def process_output(data):
+                    outfile.write(data)
+                reencrypt(pubkey, privkey, infile, process_output=process_output)
+                if inputfilename:
+                    infile.close()
+                if outputfilename:
+                    outfile.close()
 
     return 0
 

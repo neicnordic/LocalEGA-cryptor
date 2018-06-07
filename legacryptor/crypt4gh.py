@@ -164,55 +164,45 @@ def cryptor(session_key, nonce, method=None):
 
 def encrypt(pubkey, infile, infilesize, outfile, chunk_size=4096):
 
-    try:
-        LOG.info('Loading an encryption engine')
+    LOG.info('Loading an encryption engine')
 
-        session_key = os.urandom(32) # for AES-256
-        # LOG.debug(f'session key: {session_key.hex().upper()}')
-        nonce = os.urandom(16)
-        # LOG.debug(f'  CTR nonce: {nonce.hex().upper()}')
+    session_key = os.urandom(32) # for AES-256
+    # LOG.debug(f'session key: {session_key.hex().upper()}')
+    nonce = os.urandom(16)
+    # LOG.debug(f'  CTR nonce: {nonce.hex().upper()}')
 
-        LOG.info('Creating Crypt4GH header')
-        header = Header()
-        LOG.debug('Adding a record')
-        header.add_record(Record(session_key, nonce, plaintext_end=infilesize or 0xFFFFFFFFFFFFFFFF))
-        header_bytes = header.encrypt(pubkey)
-        outfile.write(header_bytes)
+    LOG.info('Creating Crypt4GH header')
+    header = Header()
+    LOG.debug('Adding a record')
+    header.add_record(Record(session_key, nonce, plaintext_end=infilesize or 0xFFFFFFFFFFFFFFFF))
+    header_bytes = header.encrypt(pubkey)
+    outfile.write(header_bytes)
 
-        LOG.debug('Make room for the SHA256 MDC')
-        outfile.write((0).to_bytes(32, byteorder='big'))
+    LOG.debug('Make room for the SHA256 MDC')
+    outfile.write((0).to_bytes(32, byteorder='big'))
 
-        LOG.debug("Streaming content")
-        mdc = hashlib.sha256()
-        engine = cryptor(session_key, nonce, method='encryptor')
-        next(engine)
+    LOG.debug("Streaming content")
+    mdc = hashlib.sha256()
+    engine = cryptor(session_key, nonce, method='encryptor')
+    next(engine)
 
-        chunk1 = infile.read(chunk_size)
-        while True:
-            mdc.update(chunk1)
-            encrypted_data = engine.send(chunk1)
-            outfile.write(encrypted_data)
-            chunk2 = infile.read(chunk_size)
-            if not chunk2: # Finally, if chunk2 is empty
-                final_data = engine.send(None)
-                outfile.write(final_data)
-                break
-            chunk1 = chunk2 # Move chunk2 to chunk1, and let it read a new chunk2
+    chunk1 = infile.read(chunk_size)
+    while True:
+        mdc.update(chunk1)
+        encrypted_data = engine.send(chunk1)
+        outfile.write(encrypted_data)
+        chunk2 = infile.read(chunk_size)
+        if not chunk2: # Finally, if chunk2 is empty
+            final_data = engine.send(None)
+            outfile.write(final_data)
+            break
+        chunk1 = chunk2 # Move chunk2 to chunk1, and let it read a new chunk2
 
-        LOG.info('Rewinding for the MDC')
-        outfile.seek(len(header_bytes), io.SEEK_SET) # from start
-        LOG.debug(f'MDC: {mdc.hexdigest().upper()}')
-        outfile.write(mdc.digest())
+    LOG.info('Rewinding for the MDC')
+    outfile.seek(len(header_bytes), io.SEEK_SET) # from start
+    LOG.debug(f'MDC: {mdc.hexdigest().upper()}')
+    outfile.write(mdc.digest())
 
-    finally:
-        infileno = infile.fileno()
-        if infileno != 0:
-            LOG.info('Closing input file (fileno %d)', infileno)
-            infile.close()
-        outfileno = outfile.fileno()
-        if outfileno != 1:
-            LOG.info('Closing output file (fileno %d)', outfileno)
-            outfile.close()
     LOG.info('Encryption Successful')
 
 def get_header(infile):
@@ -229,94 +219,78 @@ def get_header(infile):
 
     length = int.from_bytes(infile.read(4), byteorder='little') - 16
     return infile.read(length)
+
+# That allows us to decrypt and:
+# - dump the output to a file
+# - not process the output (only checksum it internally)
+# - send it (in mem) to another quality control pass
+def do_nothing(data):
+    pass
     
-def decrypt(privkey, infile, outfile=None, chunk_size=4096):
+def decrypt(privkey, infile, process_output=do_nothing, chunk_size=4096):
     assert privkey.is_unlocked, "The private key should be unlocked"
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
-    try:
-        encrypted_part = get_header(infile)
-        header = Header.decrypt(encrypted_part, privkey)
-        # Only interested in the first record, for the moment
-        r = header.records[0]
+    encrypted_part = get_header(infile)
+    header = Header.decrypt(encrypted_part, privkey)
+    # Only interested in the first record, for the moment
+    r = header.records[0]
 
-        # LOG.debug(f'session key: {r.session_key.hex().upper()}')
-        # LOG.debug(f'  CTR nonce: {r.iv.hex().upper()}')
+    # LOG.debug(f'session key: {r.session_key.hex().upper()}')
+    # LOG.debug(f'  CTR nonce: {r.iv.hex().upper()}')
 
-        LOG.debug("Shifting to right cipher position")
-        orgmdc = infile.read(32)
-        r.ciphertext_start -= 32
-        infile.seek(r.ciphertext_start,io.SEEK_CUR)
+    LOG.debug("Shifting to right cipher position")
+    orgmdc = infile.read(32)
+    r.ciphertext_start -= 32
+    infile.seek(r.ciphertext_start,io.SEEK_CUR)
+    
+    LOG.debug("Streaming content")
+    mdc = hashlib.sha256()
+    engine = cryptor(r.session_key, r.iv, method='decryptor')
+    next(engine)
 
-        LOG.debug("Streaming content")
-        mdc = hashlib.sha256()
-        engine = cryptor(r.session_key, r.iv, method='decryptor')
-        next(engine)
+    chunk1 = infile.read(chunk_size)
+    while True:
+        data = engine.send(chunk1)
+        mdc.update(data)
+        process_output(data)
+        chunk2 = infile.read(chunk_size)
+        if not chunk2: # Finally, if chunk2 is empty
+            final_data = engine.send(None)
+            mdc.update(final_data)
+            process_output(final_data)
+            break
+        chunk1 = chunk2 # Move chunk2 to chunk1, and let it read a new chunk2
 
-        chunk1 = infile.read(chunk_size)
-        while True:
-            data = engine.send(chunk1)
-            mdc.update(data)
-            if outfile:
-                outfile.write(data)
-            chunk2 = infile.read(chunk_size)
-            if not chunk2: # Finally, if chunk2 is empty
-                final_data = engine.send(None)
-                mdc.update(final_data)
-                if outfile:
-                    outfile.write(final_data)
-                break
-            chunk1 = chunk2 # Move chunk2 to chunk1, and let it read a new chunk2
+    # Checking MDC
+    LOG.debug(f'Computed MDC: {mdc.hexdigest().upper()}')
+    LOG.debug(f'Original MDC: {orgmdc.hex().upper()}')
+    if orgmdc != mdc.digest():
+        # Should we erase the file?
+        # Should we instead write the output to tempfile and then move it if successful?
+        raise ValueError("Invalid MDC")
 
-        # Checking MDC
-        LOG.debug(f'Computed MDC: {mdc.hexdigest().upper()}')
-        LOG.debug(f'Original MDC: {orgmdc.hex().upper()}')
-        if orgmdc != mdc.digest():
-            # Should we erase the file?
-            # Should we instead write the output to tempfile and then move it if successful?
-            raise ValueError("Invalid MDC")
-
-    finally:
-        infileno = infile.fileno()
-        if infileno != 0:
-            LOG.info('Closing input file (fileno %d)', infileno)
-            infile.close()
-        if outfile:
-            outfileno = outfile.fileno()
-            if outfileno != 1:
-                LOG.info('Closing output file (fileno %d)', outfileno)
-                outfile.close()
     LOG.info('Decryption Successful')
 
 
-def reencrypt(pubkey, privkey, infile, outfile, chunk_size=4096):
+def reencrypt(pubkey, privkey, infile, process_output=do_nothing, chunk_size=4096):
     '''Extract header and update with another one
     The AES encrypted part is only copied'''
     assert privkey.is_unlocked, "The private key should be unlocked"
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
-    try:
-        encrypted_part = get_header(infile)
-        header = Header.decrypt(encrypted_part, privkey)
-        header_bytes = header.encrypt(pubkey)
-        outfile.write(header_bytes)
+    encrypted_part = get_header(infile)
+    header = Header.decrypt(encrypted_part, privkey)
+    header_bytes = header.encrypt(pubkey)
+    process_output(header_bytes)
 
-        LOG.info(f'Streaming the remainer of the file')
-        while True:
-            data = infile.read(chunk_size)
-            if not data:
-                break
-            outfile.write(data)
+    LOG.info(f'Streaming the remainer of the file')
+    while True:
+        data = infile.read(chunk_size)
+        if not data:
+            break
+        process_output(data)
 
-    finally:
-        infileno = infile.fileno()
-        if infileno != 0:
-            LOG.info('Closing input file (fileno %d)', infileno)
-            infile.close()
-        outfileno = outfile.fileno()
-        if outfileno != 1:
-            LOG.info('Closing output file (fileno %d)', outfileno)
-            outfile.close()
     LOG.info('Reencryption Successful')
 
 
