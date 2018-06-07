@@ -34,8 +34,13 @@ class TestCrypt4GH(unittest.TestCase):
         keyfile = filedir.write('sec_key.asc', pgp_data.PGP_PRIVKEY.encode('utf-8'))
         outputdir = filedir.makedir('output')
         key, _ = pgpy.PGPKey.from_file(keyfile)
+        outfile = open(os.path.join(outputdir, 'outputfile.out'), 'wb')
+
+        def process_output(data):
+            outfile.write(data)
         with key.unlock(pgp_data.PGP_PASSPHRASE) as privkey:
-            decrypt(privkey, open(infile, 'rb'), open(os.path.join(outputdir, 'outputfile.out'), 'wb'))
+            decrypt(privkey, open(infile, 'rb'),  process_output=process_output)
+            outfile.close()
         result = filedir.read(('output', 'outputfile.out'))
         self.assertEquals(pgp_data.ORG_FILE, result)
         filedir.cleanup()
@@ -49,8 +54,13 @@ class TestCrypt4GH(unittest.TestCase):
         outputdir = filedir.makedir('output')
         pub_key, _ = pgpy.PGPKey.from_file(pub_keyfile)
         sec_key, _ = pgpy.PGPKey.from_file(sec_keyfile)
+        outfile = open(os.path.join(outputdir, 'outputfile.out'), 'wb')
+
+        def process_output(data):
+            outfile.write(data)
         with sec_key.unlock(pgp_data.PGP_PASSPHRASE) as privkey:
-            reencrypt(pub_key, privkey, open(infile, 'rb'), open(os.path.join(outputdir, 'outputfile.out'), 'wb'))
+            reencrypt(pub_key, privkey, open(infile, 'rb'), process_output=process_output)
+            outfile.close()
         result = filedir.read(('output', 'outputfile.out'))
         self.assertEquals(b'crypt4gh', result[:8])
         self.assertEquals(1, int.from_bytes(result[8:12], byteorder='little'))
