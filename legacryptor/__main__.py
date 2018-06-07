@@ -58,7 +58,7 @@ def run(args):
         infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
         infilesize = os.path.getsize(args['--input']) if args['--input'] else None
         outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
-        return encrypt(infile, infilesize, outfile, pubkey)
+        return encrypt(pubkey, infile, infilesize, outfile)
 
     #####################################
     ## For Decryption
@@ -73,7 +73,7 @@ def run(args):
         with seckey.unlock(passphrase) as privkey:
             infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
             outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
-            return decrypt(infile, outfile, privkey)
+            return decrypt(privkey, infile, outfile)
 
     #####################################
     ## For ReEncryption
@@ -98,7 +98,7 @@ def run(args):
                 pubkey, _ = pgpy.PGPKey.from_file(args['--pk'])
                 infile = open(args['--input'], 'rb') if args['--input'] else sys.stdin.buffer
                 outfile = open(args['--output'], 'wb') if args['--output'] else sys.stdout.buffer
-                return reencrypt(infile, outfile, pubkey, privkey)
+                return reencrypt(pubkey, privkey, infile, outfile)
 
 
     return 0

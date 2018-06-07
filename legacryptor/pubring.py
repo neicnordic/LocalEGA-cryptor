@@ -41,7 +41,7 @@ class Pubring():
             with self._store.key(recipient) as k:
                 return k
         except:
-            raise PGPError(f'No public key found for {recipient}')
+            raise ValueError(f'No public key found for {recipient}')
 
     def __bool__(self):
         return len(self._store) > 0
