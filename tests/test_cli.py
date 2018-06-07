@@ -4,9 +4,9 @@ import os
 from legacryptor.cli import parse_args, __doc__
 from legacryptor.__main__ import main, run
 from . import logger_data, pgp_data
-from testfixtures import TempDirectory
+from testfixtures import TempDirectory, tempdir
 from unittest import mock
-import io
+import pgpy
 
 
 class TestCommandLineARGS(unittest.TestCase):
@@ -20,6 +20,7 @@ class TestCommandLineARGS(unittest.TestCase):
         self._path = self._dir.write('pubring.bin', pgp_data.PGP_PUBKEY.encode('utf-8'))
         self._pk = self._dir.write('pub_key.asc', pgp_data.PGP_PUBKEY.encode('utf-8'))
         self._sk = self._dir.write('sec_key.asc', pgp_data.PGP_PRIVKEY.encode('utf-8'))
+        self._crypted = self._dir.write('input.file', bytearray.fromhex(pgp_data.ENC_FILE))
 
     def tearDown(self):
         """Remove files."""
@@ -101,3 +102,27 @@ class TestCommandLineARGS(unittest.TestCase):
         """Raise error if key not found in default pubring."""
         with self.assertRaises(ValueError):
             run(['encrypt', '-r', 'Denmark', '--pubring', self._path])
+
+    @mock.patch('getpass.getpass')
+    @tempdir()
+    def test_cmdline_decrypt_file(self, filedir, mock_pass):
+        """Check if the decrypted file is actually there and the content is as expected."""
+        filedir.makedir('directory')
+        path = os.path.join(filedir.path, 'directory', 'output.file')
+        mock_pass.return_value = pgp_data.PGP_PASSPHRASE
+        run(['decrypt', '--sk', self._sk, '-i', self._crypted, '-o', path])
+        result = filedir.read(('directory', 'output.file'))
+        self.assertEquals(pgp_data.ORG_FILE, result)
+        filedir.cleanup()
+
+    @mock.patch('getpass.getpass')
+    @tempdir()
+    def test_cmdline_reencrypt_file(self, filedir, mock_pass):
+        """Check if the reencrypted file is actually there and the header is crypt4gh."""
+        filedir.makedir('directory')
+        path = os.path.join(filedir.path, 'directory', 'output.file')
+        mock_pass.return_value = pgp_data.PGP_PASSPHRASE
+        run(['reencrypt', '--sk', self._sk, '--pk', self._pk, '-i', self._crypted, '-o', path])
+        result = filedir.read(('directory', 'output.file'))
+        self.assertEquals(b'crypt4gh', result[:8])
+        filedir.cleanup()

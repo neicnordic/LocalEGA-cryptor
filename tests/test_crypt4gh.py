@@ -2,7 +2,7 @@ import unittest
 from testfixtures import tempdir
 import os
 import pgpy
-from legacryptor.crypt4gh import encrypt, decrypt, reencrypt, get_header, Header, get_key_id
+from legacryptor.crypt4gh import encrypt, decrypt, reencrypt, get_header, Header, get_key_id, do_nothing
 from . import pgp_data
 
 
@@ -93,3 +93,7 @@ class TestCrypt4GH(unittest.TestCase):
         header = get_header(open(infile, 'rb'))
         self.assertEquals(pgp_data.KEY_ID, get_key_id(header))
         filedir.cleanup()
+
+    def test_do_nothing(self):
+        """It sould do nothing."""
+        do_nothing("data")
