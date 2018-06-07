@@ -1,7 +1,7 @@
 import unittest
 from legacryptor.pubring import Pubring
 from testfixtures import TempDirectory, tempdir
-from . import gpg_data
+from . import pgp_data
 from terminaltables import DoubleTable
 
 
@@ -13,7 +13,7 @@ class TestPubring(unittest.TestCase):
     def setUp(self):
         """Setting things up."""
         self._dir = TempDirectory()
-        self._path = self._dir.write('pubring.bin', gpg_data.PGP_PUBKEY.encode('utf-8'))
+        self._path = self._dir.write('pubring.bin', pgp_data.PGP_PUBKEY.encode('utf-8'))
         self._pubring = Pubring(self._path)
 
     def tearDown(self):
@@ -33,8 +33,16 @@ class TestPubring(unittest.TestCase):
         """Getitem, should return the key."""
         # This identified a bug for example if there is no version in the PGP_PUBKEY
         # PGPy adds its own version e.g. Version: PGPy v0.4.3
-        data = str(self._pubring.__getitem__(gpg_data.KEY_ID)).rstrip()  # for some reason PGPy adds a new line at the end
-        self.assertEquals(gpg_data.PGP_PUBKEY, data)
+
+        # for some reason PGPy adds a new line at the end
+        data_name = str(self._pubring.__getitem__(pgp_data.PGP_NAME)).rstrip()  # get by name
+        self.assertEquals(pgp_data.PGP_PUBKEY, data_name)
+        data_key_id = str(self._pubring.__getitem__(pgp_data.KEY_ID)).rstrip()  # get by key_id
+        self.assertEquals(pgp_data.PGP_PUBKEY, data_key_id)
+        data_comment = str(self._pubring.__getitem__(pgp_data.PGP_COMMENT)).rstrip()  # get by key_id
+        self.assertEquals(pgp_data.PGP_PUBKEY, data_comment)
+        data_email = str(self._pubring.__getitem__(pgp_data.PGP_EMAIL)).rstrip()  # get by key_id
+        self.assertEquals(pgp_data.PGP_PUBKEY, data_email)
 
     def test_pubring_notempty(self):
         """Pubring should not be empty."""
@@ -47,13 +55,13 @@ class TestPubring(unittest.TestCase):
     def test_pubring_iter(self):
         """Get pubring items."""
         list = [x for x in iter(self._pubring)]
-        expected = [(gpg_data.KEY_ID, gpg_data.PGP_NAME, gpg_data.PGP_EMAIL, gpg_data.PGP_COMMENT)]
+        expected = [(pgp_data.KEY_ID, pgp_data.PGP_NAME, pgp_data.PGP_EMAIL, pgp_data.PGP_COMMENT)]
         self.assertEquals(expected, list)
 
     def test_pubring_repr(self):
         """Get the table info from Pubring."""
         list_data = [('Key ID', 'User Name', 'User Email', 'User Comment')]
-        list_data.append((gpg_data.KEY_ID, gpg_data.PGP_NAME, gpg_data.PGP_EMAIL, gpg_data.PGP_COMMENT))
+        list_data.append((pgp_data.KEY_ID, pgp_data.PGP_NAME, pgp_data.PGP_EMAIL, pgp_data.PGP_COMMENT))
         table = DoubleTable(list_data)
         data = f'''\
 Available keys from {self._path}

@@ -3,10 +3,10 @@ import sys
 import os
 from legacryptor.cli import parse_args, __doc__
 from legacryptor.__main__ import main, run
-from pgpy.errors import PGPError
-from . import logger_data, gpg_data
-from testfixtures import TempDirectory, tempdir
+from . import logger_data, pgp_data
+from testfixtures import TempDirectory
 from unittest import mock
+import io
 
 
 class TestCommandLineARGS(unittest.TestCase):
@@ -17,9 +17,9 @@ class TestCommandLineARGS(unittest.TestCase):
     def setUp(self):
         """Setting things up."""
         self._dir = TempDirectory()
-        self._path = self._dir.write('pubring.bin', gpg_data.PGP_PUBKEY.encode('utf-8'))
-        self._pk = self._dir.write('pub_key.asc', gpg_data.PGP_PUBKEY.encode('utf-8'))
-        self._sk = self._dir.write('sec_key.asc', gpg_data.PGP_PRIVKEY.encode('utf-8'))
+        self._path = self._dir.write('pubring.bin', pgp_data.PGP_PUBKEY.encode('utf-8'))
+        self._pk = self._dir.write('pub_key.asc', pgp_data.PGP_PUBKEY.encode('utf-8'))
+        self._sk = self._dir.write('sec_key.asc', pgp_data.PGP_PRIVKEY.encode('utf-8'))
 
     def tearDown(self):
         """Remove files."""
@@ -80,7 +80,7 @@ class TestCommandLineARGS(unittest.TestCase):
     @mock.patch('legacryptor.__main__.decrypt')
     def test_cmdline_run_decrypt_pubring(self, mock_decrypt, mock_pass):
         """Decrypt from the command line should call the decrypt function."""
-        mock_pass.return_value = gpg_data.PGP_PASSPHRASE
+        mock_pass.return_value = pgp_data.PGP_PASSPHRASE
         run(['decrypt', '--sk', self._sk])
         mock_decrypt.assert_called()
 
@@ -88,7 +88,7 @@ class TestCommandLineARGS(unittest.TestCase):
     @mock.patch('legacryptor.__main__.reencrypt')
     def test_cmdline_run_reencrypt_pubring(self, mock_reencrypt, mock_pass):
         """Reencrypt from the command line should call the reencrypt function."""
-        mock_pass.return_value = gpg_data.PGP_PASSPHRASE
+        mock_pass.return_value = pgp_data.PGP_PASSPHRASE
         run(['reencrypt', '--sk', self._sk, '--pk', self._pk])
         mock_reencrypt.assert_called()
 
@@ -97,8 +97,7 @@ class TestCommandLineARGS(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             run(['list', '--server', 'someserver.com'])
 
-    @tempdir()
-    def test_cmdline_encrypt_key_notfound(self, filedir):
+    def test_cmdline_encrypt_key_notfound(self):
         """Raise error if key not found in default pubring."""
-        with self.assertRaises(PGPError):
+        with self.assertRaises(ValueError):
             run(['encrypt', '-r', 'Denmark', '--pubring', self._path])

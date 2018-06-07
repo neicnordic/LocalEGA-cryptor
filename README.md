@@ -80,6 +80,15 @@ Alternatively, you can use the KeyID itself
 > Note: The hereabove output might differ from your output.
 > The associated public keyring is just used for the demo.
 
+## Creating a Custom Public Keyring
+
+In order to create a custom Public keyring in a custom `/path` one can make use of:
+
+```
+gpg --no-default-keyring --keyring /path/pubring.bin --import /path/key.pub
+```
+Repeat the process for multiple keys.
+
 # Examples
 
 If you want to encrypt a file, say, for the Swedish Local EGA instance:
