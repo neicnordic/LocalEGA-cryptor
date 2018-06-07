@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/NBISweden/LocalEGA-cryptor.svg?branch=master)](https://travis-ci.org/NBISweden/LocalEGA-cryptor)
+[![Coverage Status](https://coveralls.io/repos/github/NBISweden/LocalEGA--cryptor/badge.svg?branch=master)](https://coveralls.io/github/NBISweden/LocalEGA-cryptor?branch=master)
+
 `lega-cryptor` is a tool to encrypt, decrypt or re-encrypt files
 according to the [GA4GH cryptographic standard](add the link).
 
@@ -42,7 +45,7 @@ Options:
                           Lists information about all keys in the pubring.
                           If not specified, a default pubring is used either from the
                           LEGA_PUBRING environment variable (if it exists) or as the one
-                          suppied within this package.
+                          supplied within this package.
    -r RECIPIENT           Encrypt for the given recipient [default: ega@crg.eu]
    --pk <keyfile>         Public PGP key to be used for encryption
    --sk <keyfile>         Private PGP key to be used for decryption
@@ -76,6 +79,15 @@ Alternatively, you can use the KeyID itself
 
 > Note: The hereabove output might differ from your output.
 > The associated public keyring is just used for the demo.
+
+## Creating a Custom Public Keyring
+
+In order to create a custom Public keyring in a custom `/path` one can make use of:
+
+```
+gpg --no-default-keyring --keyring /path/pubring.bin --import /path/key.pub
+```
+Repeat the process for multiple keys.
 
 # Examples
 

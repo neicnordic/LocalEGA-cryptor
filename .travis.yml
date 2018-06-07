@@ -1,0 +1,23 @@
+language: python
+
+python: 3.6
+
+services: docker
+
+# command to install dependencies
+
+stages:
+  - name: unit tests
+    if: type IN (push, pull_request)
+
+jobs:
+  include:
+    - stage: unit tests
+      python: 3.6
+      before_script:
+        - pip install tox-travis
+      # command to run tests
+      script: tox
+
+notifications:
+  email: false

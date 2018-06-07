@@ -40,7 +40,8 @@ class Pubring():
         try:
             with self._store.key(recipient) as k:
                 return k
-        except:
+        except Exception as error:
+            LOG.error(f'No public key found for {recipient} with Error: {error}')
             raise ValueError(f'No public key found for {recipient}')
 
     def __bool__(self):

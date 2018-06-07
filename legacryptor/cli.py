@@ -9,7 +9,7 @@ from . import __title__, __version__
 
 PROG = 'lega-cryptor'
 DEFAULT_LOG = os.getenv('LEGA_LOG', None)
-DEFAULT_PUBRING = os.getenv('LEGA_PUBRING', os.path.join(os.path.dirname(__file__),'pubring.bin'))
+DEFAULT_PUBRING = os.getenv('LEGA_PUBRING', os.path.join(os.path.dirname(__file__), 'pubring.bin'))
 
 __doc__ = f'''
 
@@ -28,13 +28,13 @@ Options:
    -h, --help             Prints this help and exit
    -v, --version          Prints the version and exits
    --log <file>           Path to the logger file (in YML format)
-   -s <URL>, --server <URL>     
+   -s <URL>, --server <URL>
                           Lists information about all keys in the keyserver
-   -p <file>, --pubring <file>  
+   -p <file>, --pubring <file>
                           Lists information about all keys in the pubring.
                           If not specified, a default pubring is used either from the
                           LEGA_PUBRING environment variable (if it exists) or as the one
-                          suppied within this package.
+                          supplied within this package.
    -r RECIPIENT           Encrypt for the given recipient [default: ega@crg.eu]
    --pk <keyfile>         Public PGP key to be used for encryption
    --sk <keyfile>         Private PGP key to be used for decryption
@@ -73,8 +73,5 @@ def parse_args(argv=sys.argv[1:]):
     for s in ['--log', '--help', '--version']:#, 'help', 'version']:
         del args[s]
 
-    #print(args)
+    # print(args)
     return args
-
-
-
