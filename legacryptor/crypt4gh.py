@@ -162,7 +162,7 @@ def cryptor(session_key, nonce, method=None):
             yield aes.finalize()
             break # Not really needed, since we won't advance the generator anymore
 
-def encrypt(infile, infilesize, outfile, pubkey, chunk_size=4096):
+def encrypt(pubkey, infile, infilesize, outfile, chunk_size=4096):
 
     try:
         LOG.info('Loading an encryption engine')
@@ -229,8 +229,8 @@ def get_header(infile):
 
     length = int.from_bytes(infile.read(4), byteorder='little') - 16
     return infile.read(length)
-
-def decrypt(infile, outfile, privkey, chunk_size=4096):
+    
+def decrypt(privkey, infile, outfile=None, chunk_size=4096):
     assert privkey.is_unlocked, "The private key should be unlocked"
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
@@ -257,12 +257,14 @@ def decrypt(infile, outfile, privkey, chunk_size=4096):
         while True:
             data = engine.send(chunk1)
             mdc.update(data)
-            outfile.write(data)
+            if outfile:
+                outfile.write(data)
             chunk2 = infile.read(chunk_size)
             if not chunk2: # Finally, if chunk2 is empty
                 final_data = engine.send(None)
                 mdc.update(final_data)
-                outfile.write(final_data)
+                if outfile:
+                    outfile.write(final_data)
                 break
             chunk1 = chunk2 # Move chunk2 to chunk1, and let it read a new chunk2
 
@@ -279,14 +281,15 @@ def decrypt(infile, outfile, privkey, chunk_size=4096):
         if infileno != 0:
             LOG.info('Closing input file (fileno %d)', infileno)
             infile.close()
-        outfileno = outfile.fileno()
-        if outfileno != 1:
-            LOG.info('Closing output file (fileno %d)', outfileno)
-            outfile.close()
+        if outfile:
+            outfileno = outfile.fileno()
+            if outfileno != 1:
+                LOG.info('Closing output file (fileno %d)', outfileno)
+                outfile.close()
     LOG.info('Decryption Successful')
 
 
-def reencrypt(infile, outfile, pubkey, privkey, chunk_size=4096):
+def reencrypt(pubkey, privkey, infile, outfile, chunk_size=4096):
     '''Extract header and update with another one
     The AES encrypted part is only copied'''
     assert privkey.is_unlocked, "The private key should be unlocked"
@@ -316,3 +319,15 @@ def reencrypt(infile, outfile, pubkey, privkey, chunk_size=4096):
             outfile.close()
     LOG.info('Reencryption Successful')
 
+
+def get_key_id(header):
+    msg = pgpy.PGPMessage.from_blob(header)
+    for one in msg.encrypters:
+        return one
+    return None
+
+if __name__ == '__main__':
+    filename = sys.argv[1]
+    with open(filename, 'rb') as infile:
+        header = get_header(infile)
+        print(get_key_id(header))
