@@ -226,27 +226,19 @@ def get_header(infile):
 # - send it (in mem) to another quality control pass
 def do_nothing(data):
     pass
-    
-def decrypt(privkey, infile, process_output=do_nothing, chunk_size=4096):
-    assert privkey.is_unlocked, "The private key should be unlocked"
-    assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
-    encrypted_part = get_header(infile)
-    header = Header.decrypt(encrypted_part, privkey)
-    # Only interested in the first record, for the moment
-    r = header.records[0]
-
-    # LOG.debug(f'session key: {r.session_key.hex().upper()}')
-    # LOG.debug(f'  CTR nonce: {r.iv.hex().upper()}')
+def body_decrypt(record, infile, process_output=do_nothing, chunk_size=4096):
+    # LOG.debug(f'session key: {record.session_key.hex().upper()}')
+    # LOG.debug(f'  CTR nonce: {record.iv.hex().upper()}')
 
     LOG.debug("Shifting to right cipher position")
     orgmdc = infile.read(32)
-    r.ciphertext_start -= 32
-    infile.seek(r.ciphertext_start,io.SEEK_CUR)
+    record.ciphertext_start -= 32
+    infile.seek(record.ciphertext_start,io.SEEK_CUR)
     
     LOG.debug("Streaming content")
     mdc = hashlib.sha256()
-    engine = cryptor(r.session_key, r.iv, method='decryptor')
+    engine = cryptor(record.session_key, record.iv, method='decryptor')
     next(engine)
 
     chunk1 = infile.read(chunk_size)
@@ -271,6 +263,18 @@ def decrypt(privkey, infile, process_output=do_nothing, chunk_size=4096):
         raise ValueError("Invalid MDC")
 
     LOG.info('Decryption Successful')
+
+    
+def decrypt(privkey, infile, process_output=do_nothing, chunk_size=4096):
+    assert privkey.is_unlocked, "The private key should be unlocked"
+    assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
+
+    encrypted_part = get_header(infile)
+    header = Header.decrypt(encrypted_part, privkey)
+    # Only interested in the first record, for the moment
+    r = header.records[0]
+    # Decrypt the rest
+    body_decrypt(r, infile, process_output=process_output, chunk_size=chunk_size)
 
 
 def reencrypt(pubkey, privkey, infile, process_output=do_nothing, chunk_size=4096):
@@ -299,6 +303,13 @@ def get_key_id(header):
     for one in msg.encrypters:
         return one
     return None
+
+def header_to_records(privkey, header, passphrase):
+    LOG.info('Extracting header from record')
+    privkey,_ = pgpy.PGPKey.from_blob(privkey)
+    with privkey.unlock(passphrase) as seckey:
+        return Header.decrypt(header, seckey).records
+
 
 if __name__ == '__main__':
     filename = sys.argv[1]
