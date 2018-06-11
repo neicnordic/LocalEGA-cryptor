@@ -47,27 +47,27 @@ class TestPubring(unittest.TestCase):
 
         # for some reason PGPy adds a new line at the end
         data_name = str(self._pubring.__getitem__(pgp_data.PGP_NAME)).rstrip()  # get by name
-        self.assertEquals(pgp_data.PGP_PUBKEY, data_name)
+        self.assertEqual(pgp_data.PGP_PUBKEY, data_name)
         data_key_id = str(self._pubring.__getitem__(pgp_data.KEY_ID)).rstrip()  # get by key_id
-        self.assertEquals(pgp_data.PGP_PUBKEY, data_key_id)
+        self.assertEqual(pgp_data.PGP_PUBKEY, data_key_id)
         data_comment = str(self._pubring.__getitem__(pgp_data.PGP_COMMENT)).rstrip()  # get by key_id
-        self.assertEquals(pgp_data.PGP_PUBKEY, data_comment)
+        self.assertEqual(pgp_data.PGP_PUBKEY, data_comment)
         data_email = str(self._pubring.__getitem__(pgp_data.PGP_EMAIL)).rstrip()  # get by key_id
-        self.assertEquals(pgp_data.PGP_PUBKEY, data_email)
+        self.assertEqual(pgp_data.PGP_PUBKEY, data_email)
 
     def test_pubring_notempty(self):
         """Pubring should not be empty, and this should be True."""
-        self.assertEquals(True, bool(self._pubring))
+        self.assertTrue(bool(self._pubring))
 
     def test_pubring_str(self):
         """Should return the pubring path."""
-        self.assertEquals(f'<Pubring from {self._path}>', str(self._pubring))
+        self.assertEqual(f'<Pubring from {self._path}>', str(self._pubring))
 
     def test_pubring_iter(self):
         """Get pubring items, should return the expected list."""
         list = [x for x in iter(self._pubring)]
         expected = [(pgp_data.KEY_ID, pgp_data.PGP_NAME, pgp_data.PGP_EMAIL, pgp_data.PGP_COMMENT)]
-        self.assertEquals(expected, list)
+        self.assertEqual(expected, list)
 
     def test_pubring_repr(self):
         """Get the table info from Pubring."""
@@ -79,4 +79,4 @@ Available keys from {self._path}
 {table.table}
 The first substring that matches the requested recipient will be used as the encryption key
 Alternatively, you can use the KeyID itself'''
-        self.assertEquals(data, repr(self._pubring))
+        self.assertEqual(data, repr(self._pubring))
