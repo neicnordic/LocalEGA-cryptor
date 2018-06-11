@@ -2,7 +2,7 @@ import unittest
 from testfixtures import tempdir
 import os
 import pgpy
-from legacryptor.crypt4gh import encrypt, decrypt, reencrypt, get_header, Header, get_key_id, do_nothing
+from legacryptor.crypt4gh import encrypt, decrypt, reencrypt, get_header, Header, get_key_id, do_nothing, header_to_records
 from . import pgp_data
 
 
@@ -23,8 +23,8 @@ class TestCrypt4GH(unittest.TestCase):
         # 6372797074346768 in string format is crypt4gh
         self.assertTrue(str.startswith(result.hex(), '6372797074346768'))
         # checking that the first 8 bytes are crypt4gh
-        self.assertEquals(b'crypt4gh', result[:8])
-        self.assertEquals(1, int.from_bytes(result[8:12], byteorder='little'))
+        self.assertEqual(b'crypt4gh', result[:8])
+        self.assertEqual(1, int.from_bytes(result[8:12], byteorder='little'))
         filedir.cleanup()
 
     @tempdir()
@@ -42,7 +42,7 @@ class TestCrypt4GH(unittest.TestCase):
             decrypt(privkey, open(infile, 'rb'),  process_output=process_output)
             outfile.close()
         result = filedir.read(('output', 'outputfile.out'))
-        self.assertEquals(pgp_data.ORG_FILE, result)
+        self.assertEqual(pgp_data.ORG_FILE, result)
         filedir.cleanup()
 
     @tempdir()
@@ -62,8 +62,8 @@ class TestCrypt4GH(unittest.TestCase):
             reencrypt(pub_key, privkey, open(infile, 'rb'), process_output=process_output)
             outfile.close()
         result = filedir.read(('output', 'outputfile.out'))
-        self.assertEquals(b'crypt4gh', result[:8])
-        self.assertEquals(1, int.from_bytes(result[8:12], byteorder='little'))
+        self.assertEqual(b'crypt4gh', result[:8])
+        self.assertEqual(1, int.from_bytes(result[8:12], byteorder='little'))
         filedir.cleanup()
 
     @tempdir()
@@ -82,16 +82,34 @@ class TestCrypt4GH(unittest.TestCase):
         sec_key, _ = pgpy.PGPKey.from_file(sec_keyfile)
         with sec_key.unlock(pgp_data.PGP_PASSPHRASE) as privkey:
             header = Header.decrypt(get_header(open(infile, 'rb')), privkey)
-            self.assertEquals(pgp_data.RECORD_HEADER, str(header.records[0]))
-            self.assertEquals(pgp_data.SESSION_KEY, header.records[0].session_key.hex())
+            self.assertEqual(pgp_data.RECORD_HEADER, str(header.records[0]))
+            self.assertEqual(pgp_data.SESSION_KEY, header.records[0].session_key.hex())
+            self.assertEqual(pgp_data.RECORD_HEADER_REPR, repr(header))
         filedir.cleanup()
+
+    @tempdir()
+    def test_header_bad_version(self, filedir):
+        """Should raise ValueError for the wrong crypt4gh version."""
+        infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.BAD_HEADER_FILE))
+        with self.assertRaises(ValueError):
+            get_header(open(infile, 'rb'))
 
     @tempdir()
     def test_key_id(self, filedir):
         """Testing get_key_id, should return the KeyID."""
         infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.ENC_FILE))
         header = get_header(open(infile, 'rb'))
-        self.assertEquals(pgp_data.KEY_ID, get_key_id(header))
+        self.assertEqual(pgp_data.KEY_ID, get_key_id(header))
+        filedir.cleanup()
+
+    @tempdir()
+    def test_header_to_records(self, filedir):
+        """Should return one header record."""
+        infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.ENC_FILE))
+        header = get_header(open(infile, 'rb'))
+        result = header_to_records(pgp_data.PGP_PRIVKEY, header, pgp_data.PGP_PASSPHRASE)
+        self.assertEqual(1, len(result))
+        self.assertEqual(pgp_data.RECORD_HEADER, str(result[0]))
         filedir.cleanup()
 
     def test_do_nothing(self):

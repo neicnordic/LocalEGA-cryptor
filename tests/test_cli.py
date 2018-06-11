@@ -35,7 +35,7 @@ class TestCommandLineARGS(unittest.TestCase):
         """User passes help, should return help."""
         with self.assertRaises(SystemExit):
             parse_args(['--help'])
-            self.assertEquals(__doc__, sys.stdout)
+            self.assertEqual(__doc__, sys.stdout)
 
     def test_cmdline_load_logger(self):
         """Should be able to load a custom logger."""
@@ -58,7 +58,7 @@ class TestCommandLineARGS(unittest.TestCase):
                     'list': True,
                     'reencrypt': False}
         result = parse_args(['list', '--pubring', self._path])
-        self.assertEquals(expected, dict(result))
+        self.assertEqual(expected, dict(result))
 
     def test_cmdline_main_fail(self):
         """Run without commandline args, should exit."""
@@ -112,7 +112,7 @@ class TestCommandLineARGS(unittest.TestCase):
         mock_pass.return_value = pgp_data.PGP_PASSPHRASE
         run(['decrypt', '--sk', self._sk, '-i', self._crypted, '-o', path])
         result = filedir.read(('directory', 'output.file'))
-        self.assertEquals(pgp_data.ORG_FILE, result)
+        self.assertEqual(pgp_data.ORG_FILE, result)
         filedir.cleanup()
 
     @mock.patch('getpass.getpass')
@@ -124,5 +124,5 @@ class TestCommandLineARGS(unittest.TestCase):
         mock_pass.return_value = pgp_data.PGP_PASSPHRASE
         run(['reencrypt', '--sk', self._sk, '--pk', self._pk, '-i', self._crypted, '-o', path])
         result = filedir.read(('directory', 'output.file'))
-        self.assertEquals(b'crypt4gh', result[:8])
+        self.assertEqual(b'crypt4gh', result[:8])
         filedir.cleanup()
