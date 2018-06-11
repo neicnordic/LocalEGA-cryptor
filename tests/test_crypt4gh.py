@@ -2,7 +2,7 @@ import unittest
 from testfixtures import tempdir
 import os
 import pgpy
-from legacryptor.crypt4gh import encrypt, decrypt, reencrypt, get_header, Header, get_key_id, do_nothing
+from legacryptor.crypt4gh import encrypt, decrypt, reencrypt, get_header, Header, get_key_id, do_nothing, header_to_records
 from . import pgp_data
 
 
@@ -84,7 +84,15 @@ class TestCrypt4GH(unittest.TestCase):
             header = Header.decrypt(get_header(open(infile, 'rb')), privkey)
             self.assertEquals(pgp_data.RECORD_HEADER, str(header.records[0]))
             self.assertEquals(pgp_data.SESSION_KEY, header.records[0].session_key.hex())
+            self.assertEquals(pgp_data.RECORD_HEADER_REPR, repr(header))
         filedir.cleanup()
+
+    @tempdir()
+    def test_header_bad_version(self, filedir):
+        """Should raise ValueError for the wrong crypt4gh version."""
+        infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.BAD_HEADER_FILE))
+        with self.assertRaises(ValueError):
+            get_header(open(infile, 'rb'))
 
     @tempdir()
     def test_key_id(self, filedir):
@@ -92,6 +100,16 @@ class TestCrypt4GH(unittest.TestCase):
         infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.ENC_FILE))
         header = get_header(open(infile, 'rb'))
         self.assertEquals(pgp_data.KEY_ID, get_key_id(header))
+        filedir.cleanup()
+
+    @tempdir()
+    def test_header_to_records(self, filedir):
+        """Should return one header record."""
+        infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.ENC_FILE))
+        header = get_header(open(infile, 'rb'))
+        result = header_to_records(pgp_data.PGP_PRIVKEY, header, pgp_data.PGP_PASSPHRASE)
+        self.assertEquals(1, len(result))
+        self.assertEquals(pgp_data.RECORD_HEADER, str(result[0]))
         filedir.cleanup()
 
     def test_do_nothing(self):
