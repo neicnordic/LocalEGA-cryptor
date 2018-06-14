@@ -1,7 +1,10 @@
+import os
 import unittest
 from testfixtures import tempdir
-import os
+
 import pgpy
+
+from legacryptor.exceptions import InvalidFormatError, VersionError, MDCError
 from legacryptor.crypt4gh import encrypt, decrypt, reencrypt, get_header, Header, get_key_id, do_nothing, header_to_records
 from . import pgp_data
 
@@ -70,7 +73,7 @@ class TestCrypt4GH(unittest.TestCase):
     def test_not_crypt4gh_header(self, filedir):
         """A file that has been encrypted in a different format, should trigger proper error."""
         infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.BAD_ENC_FILE))
-        with self.assertRaises(ValueError):
+        with self.assertRaises(InvalidFormatError):
             get_header(open(infile, 'rb'))
         filedir.cleanup()
 
@@ -91,7 +94,7 @@ class TestCrypt4GH(unittest.TestCase):
     def test_header_bad_version(self, filedir):
         """Should raise ValueError for the wrong crypt4gh version."""
         infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.BAD_HEADER_FILE))
-        with self.assertRaises(ValueError):
+        with self.assertRaises(VersionError):
             get_header(open(infile, 'rb'))
 
     @tempdir()

@@ -11,6 +11,7 @@ from cryptography.hazmat.backends import default_backend
 import pgpy # Simply used to encrypt/decrypt the records, all in memory.
 
 from . import __version__
+from .exceptions import InvalidFormatError, VersionError, MDCError
 
 LOG = logging.getLogger(__name__)
 
@@ -211,11 +212,11 @@ def get_header(infile):
     LOG.info(f'Deconstructing the Header')
     magic_number = infile.read(8)
     if magic_number != MAGIC_NUMBER:
-        raise ValueError("Not a CRYPT4GH formatted file")
+        raise InvalidFormatError()
 
     version = int.from_bytes(infile.read(4), byteorder='little')
     if version != __version__:
-        raise ValueError("Invalid CRYPT4GH version")
+        raise VersionError(version)
 
     length = int.from_bytes(infile.read(4), byteorder='little') - 16
     return infile.read(length)
@@ -255,12 +256,13 @@ def body_decrypt(record, infile, process_output=do_nothing, chunk_size=4096):
         chunk1 = chunk2 # Move chunk2 to chunk1, and let it read a new chunk2
 
     # Checking MDC
+    computed_mdc = mdc.digest()
     LOG.debug(f'Computed MDC: {mdc.hexdigest().upper()}')
     LOG.debug(f'Original MDC: {orgmdc.hex().upper()}')
-    if orgmdc != mdc.digest():
+    if orgmdc != computed_mdc:
         # Should we erase the file?
         # Should we instead write the output to tempfile and then move it if successful?
-        raise ValueError("Invalid MDC")
+        raise MDCError(computed_mdc, orgmdc)
 
     LOG.info('Decryption Successful')
 
