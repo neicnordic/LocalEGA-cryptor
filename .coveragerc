@@ -7,6 +7,7 @@ omit =
     /usr/*
     # omit this single file
     legacryptor/__init__.py
+    legacryptor/exceptions.py
 
 [report]
 # Regexes for lines to exclude from consideration
