@@ -84,7 +84,7 @@ class TestCrypt4GH(unittest.TestCase):
         sec_keyfile = filedir.write('sec_key.asc', pgp_data.PGP_PRIVKEY.encode('utf-8'))
         sec_key, _ = pgpy.PGPKey.from_file(sec_keyfile)
         with sec_key.unlock(pgp_data.PGP_PASSPHRASE) as privkey:
-            header = Header.decrypt(get_header(open(infile, 'rb')), privkey)
+            header = Header.decrypt(get_header(open(infile, 'rb'))[1], privkey)
             self.assertEqual(pgp_data.RECORD_HEADER, str(header.records[0]))
             self.assertEqual(pgp_data.SESSION_KEY, header.records[0].session_key.hex())
             self.assertEqual(pgp_data.RECORD_HEADER_REPR, repr(header))
@@ -101,7 +101,7 @@ class TestCrypt4GH(unittest.TestCase):
     def test_key_id(self, filedir):
         """Testing get_key_id, should return the KeyID."""
         infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.ENC_FILE))
-        header = get_header(open(infile, 'rb'))
+        _, header = get_header(open(infile, 'rb'))
         self.assertEqual(pgp_data.KEY_ID, get_key_id(header))
         filedir.cleanup()
 
@@ -109,7 +109,7 @@ class TestCrypt4GH(unittest.TestCase):
     def test_header_to_records(self, filedir):
         """Should return one header record."""
         infile = filedir.write('infile.in', bytearray.fromhex(pgp_data.ENC_FILE))
-        header = get_header(open(infile, 'rb'))
+        _, header = get_header(open(infile, 'rb'))
         result = header_to_records(pgp_data.PGP_PRIVKEY, header, pgp_data.PGP_PASSPHRASE)
         self.assertEqual(1, len(result))
         self.assertEqual(pgp_data.RECORD_HEADER, str(result[0]))

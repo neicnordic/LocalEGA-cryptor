@@ -210,16 +210,18 @@ def get_header(infile):
     '''Extract header and advance file position to AES block.'''
 
     LOG.info(f'Deconstructing the Header')
-    magic_number = infile.read(8)
+    buf = bytearray(16)
+    infile.readinto(buf)
+    magic_number = buf[:8]
     if magic_number != MAGIC_NUMBER:
         raise InvalidFormatError()
 
-    version = int.from_bytes(infile.read(4), byteorder='little')
+    version = int.from_bytes(buf[8:12], byteorder='little')
     if version != __version__:
         raise VersionError(version)
 
-    length = int.from_bytes(infile.read(4), byteorder='little') - 16
-    return infile.read(length)
+    length = int.from_bytes(buf[12:16], byteorder='little') - 16
+    return (bytes(buf), infile.read(length))
 
 # That allows us to decrypt and:
 # - dump the output to a file
@@ -271,7 +273,7 @@ def decrypt(privkey, infile, process_output=do_nothing, chunk_size=4096):
     assert privkey.is_unlocked, "The private key should be unlocked"
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
-    encrypted_part = get_header(infile)
+    _, encrypted_part = get_header(infile)
     header = Header.decrypt(encrypted_part, privkey)
     # Only interested in the first record, for the moment
     r = header.records[0]
@@ -285,7 +287,7 @@ def reencrypt(pubkey, privkey, infile, process_output=do_nothing, chunk_size=409
     assert privkey.is_unlocked, "The private key should be unlocked"
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
-    encrypted_part = get_header(infile)
+    _, encrypted_part = get_header(infile)
     header = Header.decrypt(encrypted_part, privkey)
     header_bytes = header.encrypt(pubkey)
     process_output(header_bytes)
