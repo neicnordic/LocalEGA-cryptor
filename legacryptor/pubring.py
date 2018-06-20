@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Pubring operations."""
 
 import os
 import logging

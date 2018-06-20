@@ -2,9 +2,9 @@
 #
 
 # You can set these variables from the command line.
-SPHINXOPTS    = 
+SPHINXOPTS    =
 SPHINXBUILD   = python -msphinx
-SPHINXPROJ    = LocalEGA
+SPHINXPROJ    = LocalEGA-cryptor
 SOURCEDIR     = .
 BUILDDIR      = _build
 

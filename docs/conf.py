@@ -22,7 +22,8 @@ class Mock(MagicMock):
 
 
 # Some modules need to be mocked
-MOCK_MODULES = ['cryptography', 'yaml', 'terminaltables', 'pgpy', 'docopt']
+MOCK_MODULES = ['cryptography.hazmat.primitives.ciphers', 'cryptography.hazmat.backends',
+                'yaml', 'terminaltables', 'pgpy', 'docopt', 'cryptography.hazmat']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
 # If your documentation needs a minimal Sphinx version, state it here.
@@ -58,7 +59,7 @@ current_year = str(datetime.date.today().year)
 
 # General information about the project.
 project = 'LocalEGA GA4GH cryptor'
-copyright = f'2017 - {current_year}, NBIS System Developers'
+copyright = f'{current_year}, NBIS System Developers'
 author = 'NBIS System Developers'
 
 # The version info for the project you're documenting, acts as replacement for
