@@ -32,6 +32,7 @@ Table of Contents
    Encryption           <encryption>
    Usage & Examples     <usage>
    Python Modules       <code>
+   Contributing         <CONTRIBUTING>
 
 
 |Travis| | Version |version| | Generated |today|
