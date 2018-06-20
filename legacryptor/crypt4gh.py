@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 
+"""Crypt4GH Encryption/Decryption"""
+
+# Note: We don't convert the bytes to int, because we are actually ignoring those records.
+# I'm not sure they are any useful.
+
 import os
 import sys
 import io
@@ -22,28 +27,6 @@ LOG = logging.getLogger(__name__)
 ###########################################################
 
 MAGIC_NUMBER = b'crypt4gh'
-
-"""\
-A header is composed of unencrypted part and an encrypted part.
-
-The unencrypted part is 'crypt4gh' + 4 bytes for the version + the length of the encrypted and unencrypted parts.
-
-The encrypted part is:
-* 4 bytes for the number <n> of files contained in the encrypted part
-* <n> record, where a record is:
-     -  8 bytes for the plaintext_start
-     -  8 bytes for the plaintext_end
-     -  8 bytes for the ciphertext_start
-     -  8 bytes for the counter_offset (in case several files are concatenated)
-     then
-     - 4 bytes for the method: here only 0 (for AES-256-CTR).
-     - 32 bytes for the session key
-     - 16 bytes for the IV
-
-"""
-
-# Note: We don't convert the bytes to int, because we are actually ignoring those records.
-# I'm not sure they are any useful.
 
 class Record():
     def __init__(self, session_key, iv, plaintext_start=0, plaintext_end=0xFFFFFFFFFFFFFFFF, ciphertext_start=32, counter_offset=0, method=0):
@@ -90,6 +73,27 @@ class Record():
         return obj
 
 class Header():
+    """\
+    A header is composed of unencrypted part and an encrypted part.
+    The unencrypted part is 'crypt4gh' + 4 bytes for the version + the length of the encrypted and unencrypted parts.
+    The encrypted part is:
+
+    * 4 bytes for the number <n> of files contained in the encrypted part
+    * <n> record, where a record is:
+         -  8 bytes for the plaintext_start
+         -  8 bytes for the plaintext_end
+         -  8 bytes for the ciphertext_start
+         -  8 bytes for the counter_offset (in case several files are concatenated)
+
+    * then
+         - 4 bytes for the method: here only 0 (for AES-256-CTR).
+         - 32 bytes for the session key
+         - 16 bytes for the IV
+    """
+
+    # Note: We don't convert the bytes to int, because we are actually ignoring those records.
+    # I'm not sure they are any useful.
+
     def __init__(self):
         # Unencrypted part
         self.magic_number = MAGIC_NUMBER # 8 bytes
@@ -164,7 +168,7 @@ def cryptor(session_key, nonce, method=None):
             break # Not really needed, since we won't advance the generator anymore
 
 def encrypt(pubkey, infile, infilesize, outfile, chunk_size=4096):
-
+    """Encrypt."""
     LOG.info('Loading an encryption engine')
 
     session_key = os.urandom(32) # for AES-256
@@ -238,7 +242,7 @@ def body_decrypt(record, infile, process_output=do_nothing, chunk_size=4096):
     orgmdc = infile.read(32)
     record.ciphertext_start -= 32
     infile.seek(record.ciphertext_start,io.SEEK_CUR)
-    
+
     LOG.debug("Streaming content")
     mdc = hashlib.sha256()
     engine = cryptor(record.session_key, record.iv, method='decryptor')
@@ -268,8 +272,9 @@ def body_decrypt(record, infile, process_output=do_nothing, chunk_size=4096):
 
     LOG.info('Decryption Successful')
 
-    
+
 def decrypt(privkey, infile, process_output=do_nothing, chunk_size=4096):
+    """Decrypt."""
     assert privkey.is_unlocked, "The private key should be unlocked"
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
@@ -303,12 +308,14 @@ def reencrypt(pubkey, privkey, infile, process_output=do_nothing, chunk_size=409
 
 
 def get_key_id(header):
+    """Retrieve KeyID."""
     msg = pgpy.PGPMessage.from_blob(header)
     for one in msg.encrypters:
         return one
     return None
 
 def header_to_records(privkey, header, passphrase):
+    """Extracting header from record."""
     LOG.info('Extracting header from record')
     privkey,_ = pgpy.PGPKey.from_blob(privkey)
     with privkey.unlock(passphrase) as seckey:
