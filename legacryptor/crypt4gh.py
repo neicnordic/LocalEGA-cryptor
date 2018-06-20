@@ -286,6 +286,14 @@ def decrypt(privkey, infile, process_output=do_nothing, chunk_size=4096):
     body_decrypt(r, infile, process_output=process_output, chunk_size=chunk_size)
 
 
+def reencrypt_header(pubkey, privkey, encrypted_part):
+    '''Given the encrypted part of the header, re-encrypts it and returns a new header
+
+    The private key should be unlocked.'''
+    assert privkey.is_unlocked, "The private key should be unlocked"
+    return Header.decrypt(encrypted_part, privkey).encrypt(pubkey)
+
+
 def reencrypt(pubkey, privkey, infile, process_output=do_nothing, chunk_size=4096):
     '''Extract header and update with another one
     The AES encrypted part is only copied'''
@@ -293,8 +301,7 @@ def reencrypt(pubkey, privkey, infile, process_output=do_nothing, chunk_size=409
     assert chunk_size >= 32, "Chunk size larger than 32 bytes required"
 
     _, encrypted_part = get_header(infile)
-    header = Header.decrypt(encrypted_part, privkey)
-    header_bytes = header.encrypt(pubkey)
+    header_bytes = reencrypt_header(pubkey, privkey, encrypted_part)
     process_output(header_bytes)
 
     LOG.info(f'Streaming the remainer of the file')
