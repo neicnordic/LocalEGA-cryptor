@@ -11,6 +11,7 @@ Python Modules
     legacryptor.cli
     legacryptor.crypt4gh
     legacryptor.pubring
+    legacryptor.exceptions
 
 ************
 Command Line

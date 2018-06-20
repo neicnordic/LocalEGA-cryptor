@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Exceptions"""
 
 from . import __version__
 
